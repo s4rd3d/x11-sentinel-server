@@ -1,0 +1,11 @@
+{application, x11_sentinel_server,
+ [{description, "Mouse cursor data collector backend server"},
+  {vsn, "0.0.0"},
+  {modules, []},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {mod, {x11_sentinel_server_app, []}}
+ ]}.

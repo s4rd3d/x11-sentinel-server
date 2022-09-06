@@ -1,0 +1,8 @@
+-sname x11-sentinel-server
+-setcookie x11_secret_cookie
+
++K true
++A30
++a512
+-smp enable
++pc unicode

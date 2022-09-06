@@ -1,0 +1,8 @@
+-sname ${NODE_NAME}
+-setcookie ${APP_SECRET_COOKIE}
+
++K true
++A30
++a512
+-smp enable
++pc unicode

@@ -11,5 +11,7 @@
                     burst_limit_enable => false}}}
     ]}]},
 
- {x11_sentinel_server, []}
+ {x11_sentinel_server, [
+   {port, ${APP_PORT}}
+ ]}
 ].

@@ -5,7 +5,9 @@
   {registered, []},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    cowboy,
+    jiffy
    ]},
   {mod, {x11_sentinel_server_app, []}}
  ]}.

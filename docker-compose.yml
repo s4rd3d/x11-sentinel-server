@@ -1,0 +1,16 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./
+    expose:
+      - 4369
+    hostname: x11_sentinel_server_${RUNTIME_ENV}_1
+    restart: unless-stopped
+    environment:
+    - RUNTIME_ENV
+    - APP_NAME
+    - NODE_NAME
+    - APP_SECRET_COOKIE
+    - APP_PORT

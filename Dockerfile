@@ -29,10 +29,6 @@ ARG REBAR_PROFILE=production
 # Rebar base directory
 ARG REBAR_BASE_DIR=/opt/_rebar
 
-# Set up environment variables
-ENV APP_NAME=${APP_NAME} \
-    REBAR_PROFILE=${REBAR_PROFILE}
-
 # Install git for fetching non-hex depenencies.
 #
 # build-base: jiffy's build time dependency,
@@ -75,6 +71,10 @@ RUN mkdir -p /opt/build &&\
 
 FROM alpine:${ALPINE_VERSION} AS runtime
 
+# Set up environment
+
+ARG APP_PORT=8081
+
 # Install required tools, dependencies
 #
 # * `libstdc++` is required by jiffy
@@ -96,8 +96,10 @@ COPY --from=build --chown=nobody:nogroup /opt/build ./
 # Copy entrypoint
 COPY docker/entrypoint.sh /
 
-# Start application as a non-root user
+# Epose port
+EXPOSE ${APP_PORT}
 
+# Start application as a non-root user
 USER nobody
 
 # Set up default entrypoint and command

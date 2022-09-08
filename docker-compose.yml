@@ -4,13 +4,20 @@ services:
   backend:
     build:
       context: ./
-    expose:
-      - 4369
+      args:
+        # Build time arguments
+        APP_NAME: ${APP_NAME}
+        APP_PORT: ${APP_PORT}
+        REBAR_PROFILE: ${REBAR_PROFILE}
     hostname: x11_sentinel_server_${RUNTIME_ENV}_1
     restart: unless-stopped
     environment:
-    - RUNTIME_ENV
+    # Common variables
     - APP_NAME
-    - NODE_NAME
-    - APP_SECRET_COOKIE
     - APP_PORT
+    # Build time variables
+    - REBAR_PROFILE
+    # Runtime variables
+    - APP_SECRET_COOKIE
+    - NODE_NAME
+    - RUNTIME_ENV

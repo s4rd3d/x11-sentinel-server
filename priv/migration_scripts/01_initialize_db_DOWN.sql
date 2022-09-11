@@ -1,0 +1,5 @@
+DROP OWNED BY xss;
+
+DROP USER xss;
+
+DROP DATABASE xss;

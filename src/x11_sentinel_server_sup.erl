@@ -43,5 +43,10 @@ init(_Config = #{}) ->
     SupFlags = #{strategy => one_for_one,
                  intensity => 3,
                  period => 1},
-    ChildSpecs = [],
+    ChildSpecs = [#{id => xss_database_server,
+                    start => {xss_database_server, start_link, []},
+                    restart => permanent,
+                    shutdown => 1000,
+                    type => worker,
+                    modules => [xss_database_server]}],
     {ok, {SupFlags, ChildSpecs}}.

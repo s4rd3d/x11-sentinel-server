@@ -12,6 +12,11 @@
     ]}]},
 
  {x11_sentinel_server, [
-   {port, ${APP_PORT}}
+   {port, ${APP_PORT}},
+   {db_host, "${APP_DB_HOST}"},
+   {db_username, "${APP_DB_USERNAME}"},
+   {db_password, "${APP_DB_PASSWORD}"},
+   {db_port, ${APP_DB_PORT}},
+   {db_name, "${APP_DB_NAME}"}
  ]}
 ].

@@ -24,6 +24,13 @@
 %% Test server's default port
 -define(DEFAULT_PORT, 8084).
 
+%% Database connection options
+-define(DB_HOST, "localhost").
+-define(DB_USERNAME, "xss").
+-define(DB_PASSWORD, "secret").
+-define(DB_PORT, 5432).
+-define(DB_NAME, "xss").
+
 %%%=============================================================================
 %%% CT callback
 %%%=============================================================================
@@ -35,7 +42,8 @@
 -spec all() -> Result when
       Result :: [ct_suite:ct_testname()].
 all() ->
-    [http_connectivity_test].
+    [http_connectivity_test,
+     db_connectivity_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -54,6 +62,12 @@ init_per_suite(Config) ->
                             #{level => debug,
                               config => #{file => "log/debug.log"}}),
     {ok, _} = application:ensure_all_started(gun),
+
+    ok = application:set_env(?APPLICATION, db_host, ?DB_HOST),
+    ok = application:set_env(?APPLICATION, db_username, ?DB_USERNAME),
+    ok = application:set_env(?APPLICATION, db_password, ?DB_PASSWORD),
+    ok = application:set_env(?APPLICATION, db_port, ?DB_PORT),
+    ok = application:set_env(?APPLICATION, db_name, ?DB_NAME),
     {ok, _} = application:ensure_all_started(?APPLICATION),
     Config.
 
@@ -108,7 +122,17 @@ http_connectivity_test(_Config) ->
                       application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
     StreamRef = gun:head(ConnPid, "/"),
     ?assertMatch({response, fin, _, _Headers}, gun:await(ConnPid, StreamRef)),
+    ok.
 
+%%------------------------------------------------------------------------------
+%% @doc Check the database connection by a simple query.
+%% @end
+%%------------------------------------------------------------------------------
+-spec db_connectivity_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+db_connectivity_test(_Config) ->
+    ?assertMatch({ok, _Columns, [{4}]},
+                 xss_database_server:execute(<<"SELECT 2 + 2">>)),
     ok.
 
 %%%=============================================================================

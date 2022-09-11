@@ -18,6 +18,33 @@ services:
     # Build time variables
     - REBAR_PROFILE
     # Runtime variables
+    - APP_DB_HOST
+    - APP_DB_USERNAME
+    - APP_DB_PASSWORD
+    - APP_DB_PORT
+    - APP_DB_NAME
     - APP_SECRET_COOKIE
     - NODE_NAME
     - RUNTIME_ENV
+    networks:
+    - x11_sentinel_server
+  db:
+    image: postgres:11
+    environment:
+    # Runtime variables
+    - POSTGRES_USER
+    - POSTGRES_PASSWORD
+    networks:
+     - x11_sentinel_server
+    restart: unless-stopped
+    volumes:
+     - db-data:/var/lib/postgresql/data
+
+networks:
+  x11_sentinel_server:
+    driver: bridge
+    external: true
+    name: x11_sentinel_server
+
+volumes:
+  db-data:

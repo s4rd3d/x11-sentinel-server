@@ -79,10 +79,11 @@ ARG APP_PORT=8081
 #
 # * `libstdc++` is required by jiffy
 # * `ncurses` is required by ERTS
+# * `postgresql-client` is required to set up the database
 #
 RUN --mount=type=cache,id=apk-global,sharing=locked,target=/var/cache/apk \
     ln -s /var/cache/apk /etc/apk/cache && \
-    apk add --update libstdc++ ncurses
+    apk add --update libstdc++ ncurses postgresql-client
 
 # Set up a destination for the application
 WORKDIR /opt/app

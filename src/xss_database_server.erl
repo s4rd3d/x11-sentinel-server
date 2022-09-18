@@ -1,5 +1,6 @@
 %%%-----------------------------------------------------------------------------
-%%% @doc TODO
+%%% @doc Generic server module handling the database connection and executing
+%%%      SQL queries.
 %%% @end
 %%%-----------------------------------------------------------------------------
 
@@ -22,7 +23,13 @@
         ]).
 
 %% Exported functions
--export([execute/1]).
+-export([execute/2]).
+
+%% Test only exports
+-ifdef(TEST).
+-export([empty_tables/0,
+         execute_binary/1]).
+-endif. % ifdef(TEST)
 
 %%%=============================================================================
 %%% Macros
@@ -35,7 +42,8 @@
 %%%=============================================================================
 
 %% Internal `gen_server' state
--record(state, {connection :: epgsql:connection()}).
+-record(state, {connection :: epgsql:connection(),
+                queries :: eql:query_list()}).
 
 %%%=============================================================================
 %%% Types
@@ -49,14 +57,46 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc Execute a query on the database.
+%% @doc Execute a query with parameters on the database.
 %% @end
 %%------------------------------------------------------------------------------
--spec execute(Query) -> Reply | [Reply] when
-      Query :: epgsql:sql_query(),
+-spec execute(QueryName, Parameters) -> Reply | [Reply] when
+      QueryName :: atom(),
+      Parameters :: [term()],
       Reply :: epgsql_cmd_equery:response() | epgsql_sock:error().
-execute(Query) ->
-    gen_server:call(?MODULE, {execute, Query}).
+execute(QueryName, Parameters) ->
+    gen_server:call(?MODULE, {execute, QueryName, Parameters}).
+
+-ifdef(TEST).
+%%------------------------------------------------------------------------------
+%% @doc Execute a binary query with on the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec execute_binary(Query) -> Reply | [Reply] when
+      Query :: binary(),
+      Reply :: epgsql_cmd_equery:response() | epgsql_sock:error().
+execute_binary(Query) ->
+    gen_server:call(?MODULE, {execute_binary, Query}).
+
+%%------------------------------------------------------------------------------
+%% @doc Cleanup database by removing every row in every table.
+%% @end
+%%------------------------------------------------------------------------------
+-spec empty_tables() -> ok.
+empty_tables() ->
+    SchemaName = <<"xss">>,
+    {ok, _Columns, TableNames} =
+        execute_binary(<<"SELECT TABLE_NAME "
+                         "FROM INFORMATION_SCHEMA.TABLES "
+                         "WHERE TABLE_SCHEMA='", SchemaName/binary, "'">>),
+    _ = [begin
+             {ok, _} = execute_binary(<<"DELETE FROM ",
+                                        SchemaName/binary,
+                                        ".",
+                                        TableName/binary>>)
+         end || {TableName} <- TableNames],
+    ok.
+-endif. % ifdef(TEST)
 
 %%------------------------------------------------------------------------------
 %% @doc Start `gen_server'.
@@ -90,7 +130,12 @@ init([]) ->
                                         port => DbPort,
                                         database => DbName}),
 
-    {ok, _InitialState = #state{connection = Connection}}.
+    % Parse SQL queries with `eql'.
+    PrivDir = code:priv_dir(x11_sentinel_server),
+    QueryFile = filename:join([PrivDir, "sql-queries", "queries.sql"]),
+    {ok, Queries} = eql:compile(QueryFile),
+
+    {ok, _InitialState = #state{connection = Connection, queries = Queries}}.
 
 %%------------------------------------------------------------------------------
 %% @doc Handle synchronous requests.
@@ -109,7 +154,15 @@ init([]) ->
                 {stop, Reason, state()},
       Reply :: term(),
       Reason :: term().
-handle_call({execute, Query}, _From, #state{connection = Connection} = State) ->
+handle_call({execute, QueryName, Parameters},
+            _From,
+            #state{connection = Connection, queries = Queries} = State) ->
+    {ok, Query}  = eql:get_query(QueryName, Queries),
+    Reply = epgsql:equery(Connection, Query, Parameters),
+    {reply, Reply, State};
+handle_call({execute_binary, Query},
+            _From,
+            #state{connection = Connection} = State) ->
     Reply = epgsql:equery(Connection, Query),
     {reply, Reply, State};
 handle_call(Request, From, State) ->

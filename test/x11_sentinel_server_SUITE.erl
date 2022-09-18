@@ -31,6 +31,9 @@
 -define(DB_PORT, 5432).
 -define(DB_NAME, "xss").
 
+%% Default entities
+-define(DEFAULT_USER_ID, <<"default_user">>).
+
 %%%=============================================================================
 %%% CT callback
 %%%=============================================================================
@@ -43,7 +46,8 @@
       Result :: [ct_suite:ct_testname()].
 all() ->
     [http_connectivity_test,
-     db_connectivity_test].
+     db_connectivity_test,
+     user_query_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -104,6 +108,8 @@ init_per_testcase(_Testcase, Config) ->
       Testcase :: ct_suite:ct_testname(),
       Config :: ct_suite:ct_config().
 end_per_testcase(_Testcase, _Config)->
+    % Clean up database
+    ok = xss_database_server:empty_tables(),
     ok.
 
 %%%=============================================================================
@@ -132,8 +138,37 @@ http_connectivity_test(_Config) ->
       Config :: ct_suite:ct_config().
 db_connectivity_test(_Config) ->
     ?assertMatch({ok, _Columns, [{4}]},
-                 xss_database_server:execute(<<"SELECT 2 + 2">>)),
+                 xss_database_server:execute_binary(<<"SELECT 2 + 2">>)),
     ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Check the user model related database queries.
+%% @end
+%%------------------------------------------------------------------------------
+-spec user_query_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+user_query_test(_Config) ->
+    % 1. Add a new user to the database
+    User1 = xss_user:new(#{user_id => ?DEFAULT_USER_ID}),
+    ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
+
+    % 2. Select the newly added user
+    {ok, User2} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+    ?assertMatch(#{event_count := 0, user_id := ?DEFAULT_USER_ID}, User2),
+
+    % 3. Update the event count of the user
+    {ok, 1} = xss_user_store:update_user_event_count(User2, 42),
+    {ok, User3} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+    ?assertMatch(#{event_count := 42, user_id := ?DEFAULT_USER_ID}, User3),
+
+    % 4. Soft delete user
+    {ok, 1} = xss_user_store:soft_delete_user_by_user_id(?DEFAULT_USER_ID),
+    {error, Reason} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+    ?assertEqual(#{reason => <<"User does not exist.">>,
+                   user_id => ?DEFAULT_USER_ID},
+                 Reason),
+    ok.
+
 
 %%%=============================================================================
 %%% Helper functions

@@ -1,0 +1,3 @@
+DROP TABLE xss.users CASCADE;
+
+DROP SCHEMA xss CASCADE;

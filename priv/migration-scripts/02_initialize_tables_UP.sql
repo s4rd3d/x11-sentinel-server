@@ -1,0 +1,17 @@
+BEGIN;
+
+CREATE SCHEMA xss;
+
+GRANT USAGE ON SCHEMA xss TO xss;
+
+CREATE TABLE xss.users (
+    user_id VARCHAR NOT NULL PRIMARY KEY,
+    event_count INTEGER NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    deleted_at BIGINT NULL
+);
+
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA xss TO xss;
+
+COMMIT;

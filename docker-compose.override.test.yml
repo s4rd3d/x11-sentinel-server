@@ -4,3 +4,13 @@ services:
   db:
     ports:
     - "5432:5432"
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+    - PGADMIN_DEFAULT_EMAIL
+    - PGADMIN_DEFAULT_PASSWORD
+    networks:
+    - x11_sentinel_server
+    restart: unless-stopped
+    ports:
+    - "5050:80"

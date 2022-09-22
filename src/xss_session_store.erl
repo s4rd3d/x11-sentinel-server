@@ -78,8 +78,8 @@ soft_delete_session_by_session_id(SessionId) ->
 %%-----------------------------------------------------------------------------
 -spec parse_db_row({SessionId, CreatedAt, UpdatedAt}) -> Session when
       SessionId :: xss_session:session_id(),
-      CreatedAt :: integer() | undefined,
-      UpdatedAt :: integer() | undefined,
+      CreatedAt :: xss_utils:epgsql_timestamp() | null,
+      UpdatedAt :: xss_utils:epgsql_timestamp() | null,
       Session :: xss_session:session().
 parse_db_row({SessionId, CreatedAt, UpdatedAt}) ->
       xss_session:new(

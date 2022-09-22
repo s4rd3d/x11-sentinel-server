@@ -95,8 +95,8 @@ soft_delete_user_by_user_id(UserId) ->
 -spec parse_db_row({UserId, EventCount, CreatedAt, UpdatedAt}) -> User when
       UserId :: xss_user:user_id(),
       EventCount :: non_neg_integer() | undefined,
-      CreatedAt :: integer() | undefined,
-      UpdatedAt :: integer() | undefined,
+      CreatedAt :: xss_utils:epgsql_timestamp() | null,
+      UpdatedAt :: xss_utils:epgsql_timestamp() | null,
       User :: xss_user:user().
 parse_db_row({UserId, EventCount, CreatedAt, UpdatedAt}) ->
       xss_user:new(#{user_id => UserId,

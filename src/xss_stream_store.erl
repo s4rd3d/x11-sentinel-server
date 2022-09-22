@@ -86,8 +86,8 @@ soft_delete_stream_by_stream_id(StreamId) ->
       StreamId :: xss_stream:stream_id(),
       SessionId :: xss_session:session_id(),
       UserId :: xss_user:user_id(),
-      CreatedAt :: integer() | undefined,
-      UpdatedAt :: integer() | undefined,
+      CreatedAt :: xss_utils:epgsql_timestamp() | null,
+      UpdatedAt :: xss_utils:epgsql_timestamp() | null,
       Stream :: xss_stream:stream().
 parse_db_row({StreamId, SessionId, UserId, CreatedAt, UpdatedAt}) ->
       xss_stream:new(#{stream_id => StreamId,

@@ -21,7 +21,7 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc Get a user from the database by th `user_id' field.
+%% @doc Get a user from the database by the `user_id' field.
 %% @end
 %%------------------------------------------------------------------------------
 -spec select_user_by_user_id(UserId) -> Result when
@@ -52,7 +52,7 @@ insert_user(#{user_id := UserId,
               event_count := EventCount,
               created_at := undefined,
               updated_at := undefined}) ->
-    Now = erlang:system_time(microsecond),
+    Now = xss_utils:xss_timestamp_to_epgsql_timestamp(xss_utils:now()),
     xss_database_server:execute(insert_user, [UserId, EventCount, Now, Now]).
 
 %%------------------------------------------------------------------------------
@@ -66,7 +66,7 @@ insert_user(#{user_id := UserId,
       RowsEffected :: integer(),
       Reason :: any().
 update_user_event_count(#{user_id := UserId}, EventCount) ->
-    Now = erlang:system_time(microsecond),
+    Now = xss_utils:xss_timestamp_to_epgsql_timestamp(xss_utils:now()),
     xss_database_server:execute(update_user_event_count,
                                 [EventCount, Now, UserId]).
 
@@ -80,7 +80,7 @@ update_user_event_count(#{user_id := UserId}, EventCount) ->
       RowsEffected :: integer(),
       Reason :: any().
 soft_delete_user_by_user_id(UserId) ->
-    Now = erlang:system_time(microsecond),
+    Now = xss_utils:xss_timestamp_to_epgsql_timestamp(xss_utils:now()),
     xss_database_server:execute(soft_delete_user_by_user_id,
                                 [Now, Now, UserId]).
 
@@ -101,5 +101,7 @@ soft_delete_user_by_user_id(UserId) ->
 parse_db_row({UserId, EventCount, CreatedAt, UpdatedAt}) ->
       xss_user:new(#{user_id => UserId,
                      event_count => EventCount,
-                     created_at => CreatedAt,
-                     updated_at => UpdatedAt}).
+                     created_at =>
+                      xss_utils:epgsql_timestamp_to_xss_timestamp(CreatedAt),
+                     updated_at =>
+                      xss_utils:epgsql_timestamp_to_xss_timestamp(UpdatedAt)}).

@@ -85,16 +85,19 @@ execute_binary(Query) ->
 -spec empty_tables() -> ok.
 empty_tables() ->
     SchemaName = <<"xss">>,
-    {ok, _Columns, TableNames} =
-        execute_binary(<<"SELECT TABLE_NAME "
-                         "FROM INFORMATION_SCHEMA.TABLES "
-                         "WHERE TABLE_SCHEMA='", SchemaName/binary, "'">>),
+    % The order of the tables is important here, because of the foreign key
+    % dependencies.
+    TableNames = [<<"chunks">>,
+                  <<"streams">>,
+                  <<"users_sessions">>,
+                  <<"sessions">>,
+                  <<"users">>],
     _ = [begin
              {ok, _} = execute_binary(<<"DELETE FROM ",
                                         SchemaName/binary,
                                         ".",
                                         TableName/binary>>)
-         end || {TableName} <- TableNames],
+         end || TableName <- TableNames],
     ok.
 -endif. % ifdef(TEST)
 

@@ -31,8 +31,10 @@
 -define(DB_PORT, 5432).
 -define(DB_NAME, "xss").
 
-%% Default entities
+%% Default entity identifiers
 -define(DEFAULT_USER_ID, <<"default_user">>).
+-define(DEFAULT_SESSION_ID, <<"default_session">>).
+-define(DEFAULT_STREAM_ID, <<"default_stream">>).
 
 %%%=============================================================================
 %%% CT callback
@@ -47,7 +49,7 @@
 all() ->
     [http_connectivity_test,
      db_connectivity_test,
-     user_query_test].
+     models_query_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -142,34 +144,102 @@ db_connectivity_test(_Config) ->
     ok.
 
 %%------------------------------------------------------------------------------
-%% @doc Check the user model related database queries.
+%% @doc Check the model related database queries. The following models are
+%%      tested:
+%%
+%%      *   `xss_chunk'
+%%      *   `xss_session'
+%%      *   `xss_stream'
+%%      *   `xss_user'
 %% @end
 %%------------------------------------------------------------------------------
--spec user_query_test(Config) -> ok when
+-spec models_query_test(Config) -> ok when
       Config :: ct_suite:ct_config().
-user_query_test(_Config) ->
-    % 1. Add a new user to the database
+models_query_test(_Config) ->
+    % 1. Create models with default configurations and save them to the db.
     User1 = xss_user:new(#{user_id => ?DEFAULT_USER_ID}),
-    ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
+    Session1 = xss_session:new(#{session_id => ?DEFAULT_SESSION_ID}),
+    Stream1 = xss_stream:new(#{stream_id => ?DEFAULT_STREAM_ID,
+                               session_id => ?DEFAULT_SESSION_ID,
+                               user_id => ?DEFAULT_USER_ID}),
+    Chunk1 = do_create_new_chunk(),
 
-    % 2. Select the newly added user
+    ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
+    ?assertMatch({ok, 1}, xss_session_store:insert_session(Session1)),
+    ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream1)),
+    ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk1)),
+
+    % 2. Check SELECT queries and assert equality with the original models.
     {ok, User2} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertMatch(#{event_count := 0, user_id := ?DEFAULT_USER_ID}, User2),
+    {ok, Session2} =
+      xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
+    ?assertMatch(#{session_id := ?DEFAULT_SESSION_ID}, Session2),
+    {ok, Stream2} =
+      xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
+    ?assertMatch(#{stream_id := ?DEFAULT_STREAM_ID,
+                   session_id := ?DEFAULT_SESSION_ID,
+                   user_id := ?DEFAULT_USER_ID},
+                 Stream2),
+    {ok, Chunk2} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
+    ?assertMatch(#{chunk := [],
+                   metadata := #{user_id := ?DEFAULT_USER_ID,
+                                 session_id := ?DEFAULT_SESSION_ID,
+                                 stream_id := ?DEFAULT_STREAM_ID,
+                                 sequence_number := 0,
+                                 epoch := #{unit := <<"milisecond">>,
+                                            value := 0}},
+                   real_ip_address := <<"127.0.0.1">>,
+                   peer_ip_address := <<"127.0.0.1">>,
+                   referer := <<"localhost">>,
+                   chunk := []}, Chunk2),
 
-    % 3. Update the event count of the user
+    % 2. Check UPDATE queries.
     {ok, 1} = xss_user_store:update_user_event_count(User2, 42),
     {ok, User3} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertMatch(#{event_count := 42, user_id := ?DEFAULT_USER_ID}, User3),
 
-    % 4. Soft delete user
+    % 3. Soft delete entities from the database.
+    {ok, 1} = xss_chunk_store:soft_delete_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
+    {error, Reason1} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
+    ?assertEqual(#{reason => <<"Chunk does not exist.">>,
+                   stream_id => ?DEFAULT_STREAM_ID,
+                   sequence_number => 0},
+                 Reason1),
+    {ok, 1} = xss_session_store:soft_delete_session_by_session_id(?DEFAULT_SESSION_ID),
+    {error, Reason2} = xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
+    ?assertEqual(#{reason => <<"Session does not exist.">>,
+                   session_id => ?DEFAULT_SESSION_ID},
+                 Reason2),
+    {ok, 1} = xss_stream_store:soft_delete_stream_by_stream_id(?DEFAULT_STREAM_ID),
+    {error, Reason3} = xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
+    ?assertEqual(#{reason => <<"Stream does not exist.">>,
+                   stream_id => ?DEFAULT_STREAM_ID},
+                 Reason3),
     {ok, 1} = xss_user_store:soft_delete_user_by_user_id(?DEFAULT_USER_ID),
-    {error, Reason} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+    {error, Reason4} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertEqual(#{reason => <<"User does not exist.">>,
                    user_id => ?DEFAULT_USER_ID},
-                 Reason),
+                 Reason4),
     ok.
 
 
 %%%=============================================================================
 %%% Helper functions
 %%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% @doc Create a new chunk with the default parameters.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_create_new_chunk() -> Chunk when
+      Chunk :: xss_chunk:chunk().
+do_create_new_chunk() ->
+    LooseChunk = #{chunk => [],
+                   metadata =>
+                     #{user_id => ?DEFAULT_USER_ID,
+                       session_id => ?DEFAULT_SESSION_ID,
+                       stream_id => ?DEFAULT_STREAM_ID,
+                       sequence_number => 0,
+                       epoch => #{unit => milisecond, value => 0}}},
+    xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).

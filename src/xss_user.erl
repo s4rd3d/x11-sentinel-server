@@ -27,21 +27,15 @@
 %% Primary identifier of the user.
 -type user_id() :: binary().
 
-%% Unix time stamp.
--type timestamp() :: integer().
-
 -type user() :: #{user_id := user_id(),
-
                   % The nunber of events sent by this user to the server. It is
                   % set to 'undefined' when enough event is present for building
                   % a biometric profile.
                   event_count := non_neg_integer() | undefined,
-
                   % When was the user added to the database.
-                  created_at := timestamp() | undefined,
-
+                  created_at := xss_utils:xss_timestamp() | undefined,
                   % When was the user last modified.
-                  updated_at := timestamp() | undefined}.
+                  updated_at := xss_utils:xss_timestamp() | undefined}.
 
 %%%=============================================================================
 %%% Exported functions
@@ -57,8 +51,8 @@
             updated_at => UpdatedAt}) -> User when
       UserId :: user_id(),
       EventCount :: non_neg_integer() | undefined,
-      CreatedAt :: timestamp() | undefined,
-      UpdatedAt :: timestamp() | undefined,
+      CreatedAt :: xss_utils:xss_timestamp() | undefined,
+      UpdatedAt :: xss_utils:xss_timestamp() | undefined,
       User :: user().
 new(#{user_id := UserId} = User) ->
     #{user_id => UserId,
@@ -92,7 +86,7 @@ get_event_count(#{event_count := EventCount}) ->
 %%-----------------------------------------------------------------------------
 -spec get_created_at(User) -> CreatedAt when
       User :: user(),
-      CreatedAt :: timestamp() | undefined.
+      CreatedAt :: xss_utils:xss_timestamp() | undefined.
 get_created_at(#{created_at := CreatedAt}) ->
     CreatedAt.
 
@@ -102,6 +96,6 @@ get_created_at(#{created_at := CreatedAt}) ->
 %%-----------------------------------------------------------------------------
 -spec get_updated_at(User) -> UpdatedAt when
       User :: user(),
-      UpdatedAt :: timestamp() | undefined.
+      UpdatedAt :: xss_utils:xss_timestamp() | undefined.
 get_updated_at(#{updated_at := UpdatedAt}) ->
     UpdatedAt.

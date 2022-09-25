@@ -153,12 +153,23 @@ do_accept_object(Request1, State) ->
     % 3. Send submitted data to storage
     Chunk = xss_chunk:new(ParsedBody, RealIpAddress, PeerIpAddress, Referer),
 
-    % 4. Maybe add new user to DB.
+    % 4. Maybe add new entities to DB.
     UserId = xss_chunk:get_user_id(Chunk),
+    SessionId = xss_chunk:get_session_id(Chunk),
+    StreamId = xss_chunk:get_stream_id(Chunk),
     ok = maybe_add_user(UserId),
+    ok = maybe_add_session(SessionId),
+    ok = maybe_add_user_session(UserId, SessionId),
+    ok = maybe_add_stream(StreamId, SessionId, UserId),
 
     %% 5. Persist chunk.
     {ok, _RowsEffected} = xss_chunk_store:insert_chunk(Chunk),
+
+    ok = logger:info(#{message => <<"New chunk saved to the database">>,
+                       user_id => UserId,
+                       session_id => SessionId,
+                       stream_id => xss_chunk:get_stream_id(Chunk),
+                       sequence_number => xss_chunk:get_sequence_number(Chunk)}),
 
     %% 6. Compile and return results.
     Response = jiffy:encode(#{<<"response">> => <<"ok">>}),
@@ -313,5 +324,71 @@ maybe_add_user(UserId) ->
                              user_id => UserId}),
           User = xss_user:new(#{user_id => UserId}),
           {ok, _RowsEffected} = xss_user_store:insert_user(User),
+          ok
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Maybe add a user - session pair to the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_add_user_session(UserId, SessionId) -> ok when
+      UserId :: xss_user:user_id(),
+      SessionId :: xss_session:session_id().
+maybe_add_user_session(UserId, SessionId) ->
+    case
+        xss_database_server:execute(
+            select_user_session_by_user_id_and_session_id, [UserId, SessionId])
+    of
+        {ok, _Columns, [_Row | _Rest]} ->
+          ok;
+        {ok, _Columns, []} ->
+          {ok, _} = xss_database_server:execute(insert_user_session,
+                                                [UserId, SessionId]),
+          ok
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Maybe add a new session to the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_add_session(SessionId) -> ok when
+      SessionId :: xss_session:session_id().
+maybe_add_session(SessionId) ->
+    case
+        xss_session_store:select_session_by_session_id(SessionId)
+    of
+        {ok, _Session} ->
+          ok;
+        {error, #{reason := <<"Session does not exist.">>}} ->
+          ok = logger:info(#{message => <<"Adding new session">>,
+                             session_id => SessionId}),
+          Session = xss_session:new(#{session_id => SessionId}),
+          {ok, _RowsEffected} = xss_session_store:insert_session(Session),
+          ok
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Maybe add a new stream to the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_add_stream(StreamId, SessionId, UserId) -> ok when
+      StreamId :: xss_stream:stream_id(),
+      SessionId :: xss_session:session_id(),
+      UserId :: xss_user:user_id().
+maybe_add_stream(StreamId, SessionId, UserId) ->
+    case
+        xss_stream_store:select_stream_by_stream_id(StreamId)
+    of
+        {ok, _Stream} ->
+          ok;
+        {error, #{reason := <<"Stream does not exist.">>}} ->
+          ok = logger:info(#{message => <<"Adding new stream">>,
+                             stream_id => StreamId,
+                             session_id => SessionId,
+                             user_id => UserId}),
+          Stream = xss_stream:new(#{stream_id => StreamId,
+                                    session_id => SessionId,
+                                    user_id => UserId}),
+          {ok, _RowsEffected} = xss_stream_store:insert_stream(Stream),
           ok
     end.

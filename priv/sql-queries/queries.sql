@@ -124,3 +124,17 @@ SET updated_at = $1,
 WHERE (stream_id = $3 AND
        sequence_number = $4 AND
        deleted_at IS NULL)
+
+-- :select_user_session_by_user_id_and_session_id
+SELECT
+  user_id,
+  session_id
+FROM xss.users_sessions
+WHERE (user_id = $1 AND
+       session_ID = $2)
+
+-- :insert_user_session
+INSERT INTO xss.users_sessions
+  (user_id,
+   session_id)
+VALUES ($1, $2)

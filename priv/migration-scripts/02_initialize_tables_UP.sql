@@ -43,7 +43,7 @@ CREATE TABLE xss.chunks (
     session_id VARCHAR NOT NULL,
     user_id VARCHAR NOT NULL,
     epoch_unit VARCHAR NOT NULL,
-    epoch_value INTEGER NOT NULL,
+    epoch_value BIGINT NOT NULL,
     submitted_at TIMESTAMP NOT NULL,
     real_ip_address INET NOT NULL,
     peer_ip_address INET NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE xss.chunks (
     FOREIGN KEY(session_id) REFERENCES xss.sessions(session_id),
     FOREIGN KEY(stream_id) REFERENCES xss.streams(stream_id),
 
-    CONSTRAINT chunk_id PRIMARY KEY(session_id, sequence_number)
+    CONSTRAINT chunk_id PRIMARY KEY(stream_id, sequence_number)
 );
 
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA xss TO xss;

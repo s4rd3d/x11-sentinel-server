@@ -8,7 +8,8 @@
     stdlib,
     cowboy,
     jiffy,
-    epgsql
+    epgsql,
+    eql
    ]},
   {mod, {x11_sentinel_server_app, []}}
  ]}.

@@ -28,6 +28,8 @@ services:
     - RUNTIME_ENV
     networks:
     - x11_sentinel_server
+    ports:
+    - "${APP_PORT}:${APP_PORT}"
   db:
     image: postgres:11
     environment:

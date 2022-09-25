@@ -43,7 +43,7 @@
       Reason :: term().
 start(_StartType, _StartArgs) ->
     Port = application:get_env(?APPLICATION, port, ?DEFAULT_PORT),
-    Routes = [],
+    Routes = [{"/api/1/s", xss_submission_rest_handler, #{}}],
     DispatchRules = cowboy_router:compile([{'_', Routes}]),
     {ok, _} = cowboy:start_clear(?DEFAULT_LISTENER_NAME,
                                  [{port, Port}],

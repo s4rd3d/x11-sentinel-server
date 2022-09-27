@@ -162,7 +162,10 @@ do_accept_object(Request1, State) ->
     ok = maybe_add_user_session(UserId, SessionId),
     ok = maybe_add_stream(StreamId, SessionId, UserId),
 
-    %% 5. Persist chunk.
+    % 5. Update event count of user
+    ok = increase_event_count(UserId, xss_chunk:calculate_event_count(Chunk)),
+
+    % 6. Persist chunk.
     {ok, _RowsEffected} = xss_chunk_store:insert_chunk(Chunk),
 
     ok = logger:info(#{message => <<"New chunk saved to the database">>,
@@ -171,7 +174,7 @@ do_accept_object(Request1, State) ->
                        stream_id => xss_chunk:get_stream_id(Chunk),
                        sequence_number => xss_chunk:get_sequence_number(Chunk)}),
 
-    %% 6. Compile and return results.
+    % 7. Compile and return results.
     Response = jiffy:encode(#{<<"response">> => <<"ok">>}),
     ResponseHeaders = [{<<"access-control-allow-methods">>, <<"POST">>},
                        {<<"access-control-allow-headers">>,
@@ -269,43 +272,7 @@ read_body(Request0, Acc) ->
       ParsedBody :: #{atom() => binary()}.
 parse_body(JsonBody) ->
   Map = jiffy:decode(JsonBody, [return_maps, copy_strings]),
-  camel_to_snake(Map).
-
-%%------------------------------------------------------------------------------
-%% @doc Transform camelCase keys in a map recursively to snake_case.
-%% @end
-%%------------------------------------------------------------------------------
--spec camel_to_snake(Input) -> Result when
-      Input :: #{binary() => any()} | #{atom() => any()},
-      Result :: #{atom() => any()}.
-camel_to_snake(#{} = Map) ->
-    maps:fold(fun fold_camel_to_snake/3, #{}, Map);
-camel_to_snake(Other) ->
-    Other.
-
-%%------------------------------------------------------------------------------
-%% @doc Helper method for `camel_to_snake/1'.
-%% @end
-%%------------------------------------------------------------------------------
-fold_camel_to_snake(Key, Value, Acc) ->
-    maps:merge(Acc, #{key_camel_to_snake(Key) => camel_to_snake(Value)}).
-
-%%------------------------------------------------------------------------------
-%% @doc Map known camelCase keys to snake_case.
-%% @end
-%%------------------------------------------------------------------------------
-key_camel_to_snake(<<"streamId">>) ->
-    stream_id;
-key_camel_to_snake(<<"userId">>) ->
-    user_id;
-key_camel_to_snake(<<"sessionId">>) ->
-    session_id;
-key_camel_to_snake(<<"sequenceNumber">>) ->
-    sequence_number;
-key_camel_to_snake(Binary) when is_binary(Binary) ->
-    binary_to_atom(Binary, utf8);
-key_camel_to_snake(Key) ->
-    Key.
+  xss_utils:camel_to_snake(Map).
 
 %%------------------------------------------------------------------------------
 %% @doc Maybe add a new user to the database.
@@ -392,3 +359,18 @@ maybe_add_stream(StreamId, SessionId, UserId) ->
           {ok, _RowsEffected} = xss_stream_store:insert_stream(Stream),
           ok
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Increase the event count of a user.
+%% @end
+%%------------------------------------------------------------------------------
+-spec increase_event_count(UserId, EventCount) -> ok when
+      UserId :: xss_user:user_id(),
+      EventCount :: non_neg_integer().
+increase_event_count(UserId, EventCount) ->
+    {ok, User} = xss_user_store:select_user_by_user_id(UserId),
+    OldEventCount = xss_user:get_event_count(User),
+    NewEventCount = OldEventCount + EventCount,
+    {ok, _RowsEffected} =
+        xss_user_store:update_user_event_count(User, NewEventCount),
+    ok.

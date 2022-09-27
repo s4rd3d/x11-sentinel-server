@@ -49,7 +49,8 @@
 all() ->
     [http_connectivity_test,
      db_connectivity_test,
-     models_query_test].
+     models_query_test,
+     chunk_submission_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -223,6 +224,61 @@ models_query_test(_Config) ->
                  Reason4),
     ok.
 
+%%------------------------------------------------------------------------------
+%% @doc Check the data chunk submission REST handler.
+%% @end
+%%------------------------------------------------------------------------------
+-spec chunk_submission_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+chunk_submission_test(_Config) ->
+    % Submit a chunk to the server
+    {ok, ConnPid} = gun:open(
+                      ?DEFAULT_HOST,
+                      application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+
+    Chunk1 = #{<<"metadata">> => #{<<"streamId">> => ?DEFAULT_STREAM_ID,
+                                   <<"userId">> => ?DEFAULT_USER_ID,
+                                   <<"sessionId">> => ?DEFAULT_SESSION_ID,
+                                   <<"sequenceNumber">> => 0,
+                                   <<"epoch">> =>
+                                     #{<<"unit">> => <<"millisecond">>,
+                                       <<"value">> => 42}},
+               <<"chunk">> => [<<"some event">>]},
+
+    Body = jiffy:encode(xss_utils:camel_to_snake(Chunk1), [force_utf8]),
+    StreamRef = gun:post(ConnPid,
+                         "/api/1/s",
+                         [{<<"content-type">>, <<"application/json">>}],
+                         Body),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+
+    % Check if entities are saved to the database
+    {ok, User} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+    {ok, Session} = xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
+    {ok, Stream} = xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
+    {ok, Chunk2} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
+
+    ?assertMatch(#{user_id := ?DEFAULT_USER_ID,
+                   event_count := 1},
+                 User),
+    ?assertMatch(#{session_id := ?DEFAULT_SESSION_ID}, Session),
+    ?assertMatch(#{stream_id := ?DEFAULT_STREAM_ID,
+                   session_id := ?DEFAULT_SESSION_ID,
+                   user_id := ?DEFAULT_USER_ID},
+                 Stream),
+    ?assertMatch(#{metadata := #{user_id := ?DEFAULT_USER_ID,
+                                 session_id := ?DEFAULT_SESSION_ID,
+                                 stream_id := ?DEFAULT_STREAM_ID,
+                                 sequence_number := 0,
+                                 epoch := #{unit := <<"millisecond">>,
+                                            value := 42}},
+                   real_ip_address := <<"127.0.0.1">>,
+                   peer_ip_address := <<"127.0.0.1">>,
+                   referer := <<"undefined">>,
+                   chunk := [<<"some event">>]},
+                 Chunk2),
+    ok.
 
 %%%=============================================================================
 %%% Helper functions

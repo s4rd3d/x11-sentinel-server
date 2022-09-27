@@ -12,7 +12,9 @@
 
 -export([now/0,
          xss_timestamp_to_epgsql_timestamp/1,
-         epgsql_timestamp_to_xss_timestamp/1]).
+         epgsql_timestamp_to_xss_timestamp/1,
+         camel_to_snake/1,
+         snake_to_camel/1]).
 
 -export_type([xss_timestamp/0,
               epgsql_timestamp/0]).
@@ -88,3 +90,74 @@ epgsql_timestamp_to_xss_timestamp({{Y, M, D}, {H, Mi, S}}) ->
         microsecond),
     GregorianSeconds + Microseconds.
 
+%%------------------------------------------------------------------------------
+%% @doc Transform camelCase keys in a map recursively to snake_case.
+%% @end
+%%------------------------------------------------------------------------------
+-spec camel_to_snake(Input) -> Result when
+      Input :: #{binary() => any()} | #{atom() => any()},
+      Result :: #{atom() => any()}.
+camel_to_snake(#{} = Map) ->
+    maps:fold(fun fold_camel_to_snake/3, #{}, Map);
+camel_to_snake(Other) ->
+    Other.
+
+%%------------------------------------------------------------------------------
+%% @doc Helper method for `camel_to_snake/1'.
+%% @end
+%%------------------------------------------------------------------------------
+fold_camel_to_snake(Key, Value, Acc) ->
+    maps:merge(Acc, #{key_camel_to_snake(Key) => camel_to_snake(Value)}).
+
+%%------------------------------------------------------------------------------
+%% @doc Map known camelCase keys to snake_case.
+%% @end
+%%------------------------------------------------------------------------------
+key_camel_to_snake(<<"streamId">>) ->
+    stream_id;
+key_camel_to_snake(<<"userId">>) ->
+    user_id;
+key_camel_to_snake(<<"sessionId">>) ->
+    session_id;
+key_camel_to_snake(<<"sequenceNumber">>) ->
+    sequence_number;
+key_camel_to_snake(Binary) when is_binary(Binary) ->
+    binary_to_atom(Binary, utf8);
+key_camel_to_snake(Key) ->
+    Key.
+
+%%------------------------------------------------------------------------------
+%% @doc Transform snake_case keys in a map recursively to camelCase.
+%% @end
+%%------------------------------------------------------------------------------
+-spec snake_to_camel(Input) -> Result when
+      Input ::  #{atom() => any()},
+      Result :: #{binary() => any()}.
+snake_to_camel(#{} = Map) ->
+    maps:fold(fun fold_snake_to_camel/3, #{}, Map);
+snake_to_camel(Other) ->
+    Other.
+
+%%------------------------------------------------------------------------------
+%% @doc Helper method for `snake_to_camel/1'.
+%% @end
+%%------------------------------------------------------------------------------
+fold_snake_to_camel(Key, Value, Acc) ->
+    maps:merge(Acc, #{key_snake_to_camel(Key) => snake_to_camel(Value)}).
+
+%%------------------------------------------------------------------------------
+%% @doc Map known camelCase keys to snake_case.
+%% @end
+%%------------------------------------------------------------------------------
+key_snake_to_camel(stream_id) ->
+    <<"streamId">>;
+key_snake_to_camel(user_id) ->
+    <<"userId">>;
+key_snake_to_camel(session_id) ->
+    <<"sessionId">>;
+key_snake_to_camel(sequence_number) ->
+    <<"sequenceNumber">>;
+key_snake_to_camel(Atom) when is_atom(Atom) ->
+    atom_to_binary(Atom);
+key_snake_to_camel(Key) ->
+    Key.

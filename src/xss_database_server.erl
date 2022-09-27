@@ -90,6 +90,7 @@ empty_tables() ->
     TableNames = [<<"chunks">>,
                   <<"streams">>,
                   <<"users_sessions">>,
+                  <<"profiles">>,
                   <<"sessions">>,
                   <<"users">>],
     _ = [begin

@@ -14,7 +14,8 @@
          xss_timestamp_to_epgsql_timestamp/1,
          epgsql_timestamp_to_xss_timestamp/1,
          camel_to_snake/1,
-         snake_to_camel/1]).
+         snake_to_camel/1,
+         null_to_undefined/1]).
 
 -export_type([xss_timestamp/0,
               epgsql_timestamp/0]).
@@ -161,3 +162,14 @@ key_snake_to_camel(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom);
 key_snake_to_camel(Key) ->
     Key.
+
+%%------------------------------------------------------------------------------
+%% @doc Map database `null' value to Erlang type `undefined'.
+%% @end
+%%------------------------------------------------------------------------------
+-spec null_to_undefined(Value) -> Value | undefined when
+      Value :: any().
+null_to_undefined(null) ->
+    undefined;
+null_to_undefined(Value) ->
+    Value.

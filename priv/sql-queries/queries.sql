@@ -138,3 +138,60 @@ INSERT INTO xss.users_sessions
   (user_id,
    session_id)
 VALUES ($1, $2)
+
+-- :select_profile_by_profile_id
+SELECT
+  profile_id,
+  user_id,
+  profile_data,
+  succeeded_at,
+  failed_at,
+  created_at,
+  updated_at
+FROM xss.profiles
+WHERE (profile_id = $1 AND
+       deleted_at IS NULL)
+
+-- :select_latest_profile_by_user_id
+SELECT
+  profile_id,
+  user_id,
+  profile_data,
+  succeeded_at,
+  failed_at,
+  created_at,
+  updated_at
+FROM xss.profiles
+WHERE (user_id = $1 AND
+       deleted_at IS NULL)
+ORDER BY created_at DESC LIMIT 1
+
+-- :insert_profile
+INSERT INTO xss.profiles
+  (profile_id,
+   user_id,
+   created_at,
+   updated_at)
+VALUES ($1, $2, $3, $4)
+
+-- :update_profile_success
+UPDATE xss.profiles
+SET profile_data = $1,
+    succeeded_at = $2,
+    updated_at = $3
+WHERE (profile_id = $4 AND
+       deleted_at IS NULL)
+
+-- :update_profile_failure
+UPDATE xss.profiles
+SET failed_at = $1,
+    updated_at = $2
+WHERE (profile_id = $3 AND
+       deleted_at IS NULL)
+
+-- :soft_delete_profile_by_profile_id
+UPDATE xss.profiles
+SET updated_at = $1,
+    deleted_at = $2
+WHERE (profile_id = $3 AND
+       deleted_at IS NULL)

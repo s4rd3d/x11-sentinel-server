@@ -60,6 +60,19 @@ CREATE TABLE xss.chunks (
     CONSTRAINT chunk_id PRIMARY KEY(stream_id, sequence_number)
 );
 
+CREATE TABLE xss.profiles (
+    profile_id VARCHAR NOT NULL PRIMARY KEY,
+    user_id VARCHAR NOT NULL,
+    profile_data BYTEA NULL,
+    succeeded_at TIMESTAMP NULL,
+    failed_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP NULL,
+
+    FOREIGN KEY(user_id) REFERENCES xss.users(user_id)
+);
+
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA xss TO xss;
 
 COMMIT;

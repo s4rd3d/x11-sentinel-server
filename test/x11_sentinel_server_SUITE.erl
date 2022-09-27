@@ -32,9 +32,11 @@
 -define(DB_NAME, "xss").
 
 %% Default entity identifiers
--define(DEFAULT_USER_ID, <<"default_user">>).
--define(DEFAULT_SESSION_ID, <<"default_session">>).
--define(DEFAULT_STREAM_ID, <<"default_stream">>).
+-define(DEFAULT_USER_ID, <<"default user">>).
+-define(DEFAULT_SESSION_ID, <<"default session">>).
+-define(DEFAULT_STREAM_ID, <<"default stream">>).
+-define(DEFAULT_PROFILE_ID, <<"default profile">>).
+-define(DEFAULT_PROFILE_DATA, <<"default profile data">>).
 
 %%%=============================================================================
 %%% CT callback
@@ -152,6 +154,7 @@ db_connectivity_test(_Config) ->
 %%      *   `xss_session'
 %%      *   `xss_stream'
 %%      *   `xss_user'
+%%      *   `xss_profile'
 %% @end
 %%------------------------------------------------------------------------------
 -spec models_query_test(Config) -> ok when
@@ -164,24 +167,35 @@ models_query_test(_Config) ->
                                session_id => ?DEFAULT_SESSION_ID,
                                user_id => ?DEFAULT_USER_ID}),
     Chunk1 = do_create_new_chunk(),
+    Profile1 = xss_profile:new(#{profile_id => ?DEFAULT_PROFILE_ID,
+                                 user_id => ?DEFAULT_USER_ID}),
 
     ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
     ?assertMatch({ok, 1}, xss_session_store:insert_session(Session1)),
     ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream1)),
     ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk1)),
+    ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile1)),
 
     % 2. Check SELECT queries and assert equality with the original models.
+
+    % user
     {ok, User2} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertMatch(#{event_count := 0, user_id := ?DEFAULT_USER_ID}, User2),
+
+    % session
     {ok, Session2} =
       xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
     ?assertMatch(#{session_id := ?DEFAULT_SESSION_ID}, Session2),
+
+    % stream
     {ok, Stream2} =
       xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
     ?assertMatch(#{stream_id := ?DEFAULT_STREAM_ID,
                    session_id := ?DEFAULT_SESSION_ID,
                    user_id := ?DEFAULT_USER_ID},
                  Stream2),
+
+    % chunk
     {ok, Chunk2} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
     ?assertMatch(#{chunk := [],
                    metadata := #{user_id := ?DEFAULT_USER_ID,
@@ -195,33 +209,81 @@ models_query_test(_Config) ->
                    referer := <<"localhost">>,
                    chunk := []}, Chunk2),
 
+    % profile
+    {ok, Profile2} =
+      xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
+    ?assertMatch(#{profile_id := ?DEFAULT_PROFILE_ID,
+                   user_id := ?DEFAULT_USER_ID,
+                   profile_data := undefined,
+                   succeeded_at := undefined,
+                   failed_at := undefined}, Profile2),
+    {ok, Profile3} =
+      xss_profile_store:select_latest_profile_by_user_id(?DEFAULT_USER_ID),
+    ?assertEqual(Profile2, Profile3),
+
     % 2. Check UPDATE queries.
+
+    % user
     {ok, 1} = xss_user_store:update_user_event_count(User2, 42),
     {ok, User3} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertMatch(#{event_count := 42, user_id := ?DEFAULT_USER_ID}, User3),
 
+    % profile
+    {ok, 1} = xss_profile_store:update_profile_success(?DEFAULT_PROFILE_ID,
+                                                       ?DEFAULT_PROFILE_DATA),
+    {ok, Profile4} =
+      xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
+    ?assertMatch(#{profile_id := ?DEFAULT_PROFILE_ID,
+               user_id := ?DEFAULT_USER_ID,
+               profile_data := ?DEFAULT_PROFILE_DATA,
+               failed_at := undefined}, Profile4),
+    #{succeeded_at := SucceededAt} = Profile4,
+    ?assert(SucceededAt =/= undefined),
+    {ok, 1} = xss_profile_store:update_profile_failure(?DEFAULT_PROFILE_ID),
+    {ok, Profile5} =
+      xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
+    ?assertMatch(#{profile_id := ?DEFAULT_PROFILE_ID,
+               user_id := ?DEFAULT_USER_ID,
+               profile_data := ?DEFAULT_PROFILE_DATA}, Profile5),
+    #{failed_at := FailedAt} = Profile5,
+    ?assert(FailedAt =/= undefined),
+
     % 3. Soft delete entities from the database.
+
+    % chunk
     {ok, 1} = xss_chunk_store:soft_delete_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
     {error, Reason1} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
     ?assertEqual(#{reason => <<"Chunk does not exist.">>,
                    stream_id => ?DEFAULT_STREAM_ID,
                    sequence_number => 0},
                  Reason1),
+
+    % session
     {ok, 1} = xss_session_store:soft_delete_session_by_session_id(?DEFAULT_SESSION_ID),
     {error, Reason2} = xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
     ?assertEqual(#{reason => <<"Session does not exist.">>,
                    session_id => ?DEFAULT_SESSION_ID},
                  Reason2),
+
+    % stream
     {ok, 1} = xss_stream_store:soft_delete_stream_by_stream_id(?DEFAULT_STREAM_ID),
     {error, Reason3} = xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
     ?assertEqual(#{reason => <<"Stream does not exist.">>,
                    stream_id => ?DEFAULT_STREAM_ID},
                  Reason3),
+
+    % user
     {ok, 1} = xss_user_store:soft_delete_user_by_user_id(?DEFAULT_USER_ID),
     {error, Reason4} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
     ?assertEqual(#{reason => <<"User does not exist.">>,
                    user_id => ?DEFAULT_USER_ID},
                  Reason4),
+    % profile
+    {ok, 1} = xss_profile_store:soft_delete_profile_by_profile_id(?DEFAULT_PROFILE_ID),
+    {error, Reason5} = xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
+    ?assertEqual(#{reason => <<"Profile does not exist.">>,
+                   profile_id => ?DEFAULT_PROFILE_ID},
+                 Reason5),
     ok.
 
 %%------------------------------------------------------------------------------

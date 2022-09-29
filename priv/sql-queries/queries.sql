@@ -195,3 +195,91 @@ SET updated_at = $1,
     deleted_at = $2
 WHERE (profile_id = $3 AND
        deleted_at IS NULL)
+
+-- :select_verification_by_verification_id
+SELECT
+  verification_id,
+  profile_id,
+  stream_id,
+  last_chunk,
+  chunk_count,
+  result,
+  succeeded_at,
+  failed_at,
+  created_at,
+  updated_at
+FROM xss.verifications
+WHERE (verification_id = $1 AND
+       deleted_at IS NULL)
+
+-- :select_verifications_by_profile_id
+SELECT
+  verification_id,
+  profile_id,
+  stream_id,
+  last_chunk,
+  chunk_count,
+  result,
+  succeeded_at,
+  failed_at,
+  created_at,
+  updated_at
+FROM xss.verifications
+WHERE (profile_id = $1 AND
+       deleted_at IS NULL)
+
+-- :select_latest_succeeded_verification_by_user_id
+SELECT
+  v.verification_id,
+  v.profile_id,
+  v.stream_id,
+  v.last_chunk,
+  v.chunk_count,
+  v.result,
+  v.succeeded_at,
+  v.failed_at,
+  v.created_at,
+  v.updated_at
+FROM
+    xss.profiles p
+    INNER JOIN xss.verifications v
+    ON p.profile_id = v.profile_id
+WHERE (p.user_id = $1 AND
+       p.deleted_at IS NULL AND
+       v.deleted_at IS NULL AND
+       v.succeeded_at IS NOT NULL)
+ORDER BY v.succeeded_at
+LIMIT 1
+
+-- :insert_verification
+INSERT INTO xss.verifications
+  (verification_id,
+   profile_id,
+   stream_id,
+   last_chunk,
+   chunk_count,
+   created_at,
+   updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+
+-- :update_verification_success
+UPDATE xss.verifications
+SET result = $1,
+    succeeded_at = $2,
+    updated_at = $3
+WHERE (verification_id = $4 AND
+       deleted_at IS NULL)
+
+-- :update_verification_failure
+UPDATE xss.verifications
+SET failed_at = $1,
+    updated_at = $2
+WHERE (verification_id = $3 AND
+       deleted_at IS NULL)
+
+-- :soft_delete_verification_by_verification_id
+UPDATE xss.verifications
+SET updated_at = $1,
+    deleted_at = $2
+WHERE (verification_id = $3 AND
+       deleted_at IS NULL)

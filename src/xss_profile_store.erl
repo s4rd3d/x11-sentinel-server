@@ -155,15 +155,15 @@ parse_db_row({ProfileId,
               FailedAt,
               CreatedAt,
               UpdatedAt}) ->
-      xss_profile:new(
-          #{profile_id => xss_utils:null_to_undefined(ProfileId),
-            user_id => UserId,
-            profile_data => xss_utils:null_to_undefined(ProfileData),
-            succeeded_at =>
-             xss_utils:epgsql_timestamp_to_xss_timestamp(SucceededAt),
-            failed_at =>
-             xss_utils:epgsql_timestamp_to_xss_timestamp(FailedAt),
-            created_at =>
-             xss_utils:epgsql_timestamp_to_xss_timestamp(CreatedAt),
-            updated_at =>
-             xss_utils:epgsql_timestamp_to_xss_timestamp(UpdatedAt)}).
+    xss_profile:new(
+        #{profile_id => xss_utils:null_to_undefined(ProfileId),
+          user_id => UserId,
+          profile_data => xss_utils:null_to_undefined(ProfileData),
+          succeeded_at =>
+           xss_utils:epgsql_timestamp_to_xss_timestamp(SucceededAt),
+          failed_at =>
+           xss_utils:epgsql_timestamp_to_xss_timestamp(FailedAt),
+          created_at =>
+           xss_utils:epgsql_timestamp_to_xss_timestamp(CreatedAt),
+          updated_at =>
+           xss_utils:epgsql_timestamp_to_xss_timestamp(UpdatedAt)}).

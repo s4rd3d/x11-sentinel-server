@@ -31,12 +31,13 @@
 -define(DB_PORT, 5432).
 -define(DB_NAME, "xss").
 
-%% Default entity identifiers
+%% Default model identifiers and data
 -define(DEFAULT_USER_ID, <<"default user">>).
 -define(DEFAULT_SESSION_ID, <<"default session">>).
 -define(DEFAULT_STREAM_ID, <<"default stream">>).
 -define(DEFAULT_PROFILE_ID, <<"default profile">>).
 -define(DEFAULT_PROFILE_DATA, <<"default profile data">>).
+-define(DEFAULT_VERIFICATION_ID, <<"default verification">>).
 
 %%%=============================================================================
 %%% CT callback
@@ -155,6 +156,7 @@ db_connectivity_test(_Config) ->
 %%      *   `xss_stream'
 %%      *   `xss_user'
 %%      *   `xss_profile'
+%%      *   `xss_verification'
 %% @end
 %%------------------------------------------------------------------------------
 -spec models_query_test(Config) -> ok when
@@ -169,12 +171,19 @@ models_query_test(_Config) ->
     Chunk1 = do_create_new_chunk(),
     Profile1 = xss_profile:new(#{profile_id => ?DEFAULT_PROFILE_ID,
                                  user_id => ?DEFAULT_USER_ID}),
+    Verification1 =
+      xss_verification:new(#{verification_id => ?DEFAULT_VERIFICATION_ID,
+                             profile_id => ?DEFAULT_PROFILE_ID,
+                             stream_id => ?DEFAULT_STREAM_ID,
+                             last_chunk => 0,
+                             chunk_count => 1}),
 
     ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
     ?assertMatch({ok, 1}, xss_session_store:insert_session(Session1)),
     ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream1)),
     ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk1)),
     ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile1)),
+    ?assertMatch({ok, 1}, xss_verification_store:insert_verification(Verification1)),
 
     % 2. Check SELECT queries and assert equality with the original models.
 
@@ -221,6 +230,25 @@ models_query_test(_Config) ->
       xss_profile_store:select_latest_profile_by_user_id(?DEFAULT_USER_ID),
     ?assertEqual(Profile2, Profile3),
 
+    % verification
+    {ok, Verification2} =
+      xss_verification_store:select_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
+    ?assertMatch(#{verification_id := ?DEFAULT_VERIFICATION_ID,
+                   profile_id := ?DEFAULT_PROFILE_ID,
+                   stream_id := ?DEFAULT_STREAM_ID,
+                   last_chunk := 0,
+                   chunk_count := 1,
+                   result := undefined,
+                   succeeded_at := undefined,
+                   failed_at := undefined}, Verification2),
+    {ok, [Verification3]} =
+      xss_verification_store:select_verifications_by_profile_id(?DEFAULT_PROFILE_ID),
+    ?assertEqual(Verification2, Verification3),
+    ?assertEqual(
+      {error, #{reason => <<"Verification not found.">>,
+                user_id => ?DEFAULT_USER_ID}},
+      xss_verification_store:select_latest_succeeded_verification_by_user_id(?DEFAULT_USER_ID)),
+
     % 2. Check UPDATE queries.
 
     % user
@@ -237,16 +265,32 @@ models_query_test(_Config) ->
                user_id := ?DEFAULT_USER_ID,
                profile_data := ?DEFAULT_PROFILE_DATA,
                failed_at := undefined}, Profile4),
-    #{succeeded_at := SucceededAt} = Profile4,
-    ?assert(SucceededAt =/= undefined),
+    ?assert(xss_profile:get_succeeded_at(Profile4) =/= undefined),
     {ok, 1} = xss_profile_store:update_profile_failure(?DEFAULT_PROFILE_ID),
     {ok, Profile5} =
       xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
-    ?assertMatch(#{profile_id := ?DEFAULT_PROFILE_ID,
-               user_id := ?DEFAULT_USER_ID,
-               profile_data := ?DEFAULT_PROFILE_DATA}, Profile5),
-    #{failed_at := FailedAt} = Profile5,
-    ?assert(FailedAt =/= undefined),
+    ?assert(xss_profile:get_failed_at(Profile5) =/= undefined),
+
+    % verification
+    {ok, 1} =
+      xss_verification_store:update_verification_success(?DEFAULT_VERIFICATION_ID,
+                                                         0.42),
+    {ok, Verification4} =
+      xss_verification_store:select_latest_succeeded_verification_by_user_id(?DEFAULT_USER_ID),
+      ?assertMatch(#{verification_id := ?DEFAULT_VERIFICATION_ID,
+                 profile_id := ?DEFAULT_PROFILE_ID,
+                 stream_id := ?DEFAULT_STREAM_ID,
+                 last_chunk := 0,
+                 chunk_count := 1,
+                 result := 0.42,
+                 failed_at := undefined}, Verification4),
+    ?assert(xss_verification:get_succeeded_at(Verification4) =/= undefined),
+
+    {ok, 1} =
+      xss_verification_store:update_verification_failure(?DEFAULT_VERIFICATION_ID),
+    {ok, Verification5} =
+      xss_verification_store:select_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
+    ?assert(xss_verification:get_failed_at(Verification5) =/= undefined),
 
     % 3. Soft delete entities from the database.
 
@@ -284,6 +328,12 @@ models_query_test(_Config) ->
     ?assertEqual(#{reason => <<"Profile does not exist.">>,
                    profile_id => ?DEFAULT_PROFILE_ID},
                  Reason5),
+    % verification
+    {ok, 1} = xss_verification_store:soft_delete_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
+    {error, Reason6} = xss_verification_store:select_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
+    ?assertEqual(#{reason => <<"Verification does not exist.">>,
+                   verification_id => ?DEFAULT_VERIFICATION_ID},
+                 Reason6),
     ok.
 
 %%------------------------------------------------------------------------------

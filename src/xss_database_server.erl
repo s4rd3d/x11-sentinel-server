@@ -87,10 +87,11 @@ empty_tables() ->
     SchemaName = <<"xss">>,
     % The order of the tables is important here, because of the foreign key
     % dependencies.
-    TableNames = [<<"chunks">>,
+    TableNames = [<<"verifications">>,
+                  <<"chunks">>,
                   <<"streams">>,
-                  <<"users_sessions">>,
                   <<"profiles">>,
+                  <<"users_sessions">>,
                   <<"sessions">>,
                   <<"users">>],
     _ = [begin

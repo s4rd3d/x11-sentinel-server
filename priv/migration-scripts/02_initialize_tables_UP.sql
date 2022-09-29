@@ -73,6 +73,23 @@ CREATE TABLE xss.profiles (
     FOREIGN KEY(user_id) REFERENCES xss.users(user_id)
 );
 
+CREATE TABLE xss.verifications (
+    verification_id VARCHAR NOT NULL PRIMARY KEY,
+    profile_id VARCHAR NOT NULL,
+    stream_id VARCHAR NOT NULL,
+    last_chunk INT NOT NULL,
+    chunk_count INT NOT NULL,
+    result DOUBLE PRECISION NULL,
+    succeeded_at TIMESTAMP NULL,
+    failed_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    deleted_at TIMESTAMP NULL,
+
+    FOREIGN KEY(profile_id) REFERENCES xss.profiles(profile_id),
+    FOREIGN KEY(stream_id) REFERENCES xss.streams(stream_id)
+);
+
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA xss TO xss;
 
 COMMIT;

@@ -35,7 +35,7 @@ select_profile_by_profile_id(ProfileId) ->
       xss_database_server:execute(select_profile_by_profile_id, [ProfileId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Profile does not exist.">>,
+            {error, #{reason => profile_not_found,
                       profile_id => ProfileId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}
@@ -54,7 +54,7 @@ select_latest_profile_by_user_id(UserId) ->
       xss_database_server:execute(select_latest_profile_by_user_id, [UserId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"User does not have a profile.">>,
+            {error, #{reason => profile_not_found,
                       user_id => UserId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}

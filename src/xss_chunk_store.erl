@@ -36,7 +36,7 @@ select_chunk_by_stream_id_and_sequence_number(StreamId, SequenceNumber) ->
                                   [StreamId, SequenceNumber])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Chunk does not exist.">>,
+            {error, #{reason => chunk_not_found,
                       stream_id => StreamId,
                       sequence_number => SequenceNumber}};
         {ok, _Columns, [Row | _Rest]} ->

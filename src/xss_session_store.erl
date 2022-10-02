@@ -32,7 +32,7 @@ select_session_by_session_id(SessionId) ->
       xss_database_server:execute(select_session_by_session_id, [SessionId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Session does not exist.">>,
+            {error, #{reason => session_not_found,
                       session_id => SessionId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}

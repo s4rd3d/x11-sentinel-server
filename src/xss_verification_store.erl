@@ -37,7 +37,7 @@ select_verification_by_verification_id(VerificationId) ->
                                   [VerificationId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Verification does not exist.">>,
+            {error, #{reason => verification_not_found,
                       verification_id => VerificationId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}
@@ -76,7 +76,7 @@ select_latest_succeeded_verification_by_user_id(UserId) ->
                                   [UserId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Verification not found.">>,
+            {error, #{reason => verification_not_found,
                       user_id => UserId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}

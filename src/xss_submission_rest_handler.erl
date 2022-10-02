@@ -286,7 +286,7 @@ maybe_add_user(UserId) ->
     of
         {ok, _User} ->
           ok;
-        {error, #{reason := <<"User does not exist.">>}} ->
+        {error, #{reason := user_not_found}} ->
           ok = logger:info(#{message => <<"Adding new user">>,
                              user_id => UserId}),
           User = xss_user:new(#{user_id => UserId}),
@@ -326,7 +326,7 @@ maybe_add_session(SessionId) ->
     of
         {ok, _Session} ->
           ok;
-        {error, #{reason := <<"Session does not exist.">>}} ->
+        {error, #{reason := session_not_found}} ->
           ok = logger:info(#{message => <<"Adding new session">>,
                              session_id => SessionId}),
           Session = xss_session:new(#{session_id => SessionId}),
@@ -348,7 +348,7 @@ maybe_add_stream(StreamId, SessionId, UserId) ->
     of
         {ok, _Stream} ->
           ok;
-        {error, #{reason := <<"Stream does not exist.">>}} ->
+        {error, #{reason := stream_not_found}} ->
           ok = logger:info(#{message => <<"Adding new stream">>,
                              stream_id => StreamId,
                              session_id => SessionId,

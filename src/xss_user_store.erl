@@ -33,7 +33,7 @@ select_user_by_user_id(UserId) ->
       xss_database_server:execute(select_user_by_user_id, [UserId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"User does not exist.">>,
+            {error, #{reason => user_not_found,
                       user_id => UserId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}

@@ -32,7 +32,7 @@ select_stream_by_stream_id(StreamId) ->
       xss_database_server:execute(select_stream_by_stream_id, [StreamId])
     of
         {ok, _Columns, []} ->
-            {error, #{reason => <<"Stream does not exist.">>,
+            {error, #{reason => stream_not_found,
                       stream_id => StreamId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}

@@ -22,7 +22,7 @@
 -define(DEFAULT_HOST, "localhost").
 
 %% Test server's default port
--define(DEFAULT_PORT, 8084).
+-define(DEFAULT_PORT, 8085).
 
 %% Database connection options
 -define(DB_HOST, "localhost").
@@ -38,6 +38,10 @@
 -define(DEFAULT_PROFILE_ID, <<"default profile">>).
 -define(DEFAULT_PROFILE_DATA, <<"default profile data">>).
 -define(DEFAULT_VERIFICATION_ID, <<"default verification">>).
+
+%% Applications defaults
+-define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1).
+-define(MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 1).
 
 %%%=============================================================================
 %%% CT callback
@@ -73,11 +77,18 @@ init_per_suite(Config) ->
                               config => #{file => "log/debug.log"}}),
     {ok, _} = application:ensure_all_started(gun),
 
+    ok = application:set_env(?APPLICATION, port, ?DEFAULT_PORT),
     ok = application:set_env(?APPLICATION, db_host, ?DB_HOST),
     ok = application:set_env(?APPLICATION, db_username, ?DB_USERNAME),
     ok = application:set_env(?APPLICATION, db_password, ?DB_PASSWORD),
     ok = application:set_env(?APPLICATION, db_port, ?DB_PORT),
     ok = application:set_env(?APPLICATION, db_name, ?DB_NAME),
+    ok = application:set_env(?APPLICATION,
+                             minimum_event_count_for_profile,
+                             ?MINIMUM_EVENT_COUNT_FOR_PROFILE),
+    ok = application:set_env(?APPLICATION,
+                             minimum_event_count_for_verification,
+                             ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION),
     {ok, _} = application:ensure_all_started(?APPLICATION),
     Config.
 
@@ -245,7 +256,7 @@ models_query_test(_Config) ->
       xss_verification_store:select_verifications_by_profile_id(?DEFAULT_PROFILE_ID),
     ?assertEqual(Verification2, Verification3),
     ?assertEqual(
-      {error, #{reason => <<"Verification not found.">>,
+      {error, #{reason => verification_not_found,
                 user_id => ?DEFAULT_USER_ID}},
       xss_verification_store:select_latest_succeeded_verification_by_user_id(?DEFAULT_USER_ID)),
 
@@ -297,7 +308,7 @@ models_query_test(_Config) ->
     % chunk
     {ok, 1} = xss_chunk_store:soft_delete_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
     {error, Reason1} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
-    ?assertEqual(#{reason => <<"Chunk does not exist.">>,
+    ?assertEqual(#{reason => chunk_not_found,
                    stream_id => ?DEFAULT_STREAM_ID,
                    sequence_number => 0},
                  Reason1),
@@ -305,33 +316,33 @@ models_query_test(_Config) ->
     % session
     {ok, 1} = xss_session_store:soft_delete_session_by_session_id(?DEFAULT_SESSION_ID),
     {error, Reason2} = xss_session_store:select_session_by_session_id(?DEFAULT_SESSION_ID),
-    ?assertEqual(#{reason => <<"Session does not exist.">>,
+    ?assertEqual(#{reason => session_not_found,
                    session_id => ?DEFAULT_SESSION_ID},
                  Reason2),
 
     % stream
     {ok, 1} = xss_stream_store:soft_delete_stream_by_stream_id(?DEFAULT_STREAM_ID),
     {error, Reason3} = xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
-    ?assertEqual(#{reason => <<"Stream does not exist.">>,
+    ?assertEqual(#{reason => stream_not_found,
                    stream_id => ?DEFAULT_STREAM_ID},
                  Reason3),
 
     % user
     {ok, 1} = xss_user_store:soft_delete_user_by_user_id(?DEFAULT_USER_ID),
     {error, Reason4} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
-    ?assertEqual(#{reason => <<"User does not exist.">>,
+    ?assertEqual(#{reason => user_not_found,
                    user_id => ?DEFAULT_USER_ID},
                  Reason4),
     % profile
     {ok, 1} = xss_profile_store:soft_delete_profile_by_profile_id(?DEFAULT_PROFILE_ID),
     {error, Reason5} = xss_profile_store:select_profile_by_profile_id(?DEFAULT_PROFILE_ID),
-    ?assertEqual(#{reason => <<"Profile does not exist.">>,
+    ?assertEqual(#{reason => profile_not_found,
                    profile_id => ?DEFAULT_PROFILE_ID},
                  Reason5),
     % verification
     {ok, 1} = xss_verification_store:soft_delete_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
     {error, Reason6} = xss_verification_store:select_verification_by_verification_id(?DEFAULT_VERIFICATION_ID),
-    ?assertEqual(#{reason => <<"Verification does not exist.">>,
+    ?assertEqual(#{reason => verification_not_found,
                    verification_id => ?DEFAULT_VERIFICATION_ID},
                  Reason6),
     ok.

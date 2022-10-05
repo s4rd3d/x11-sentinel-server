@@ -9,7 +9,9 @@
     cowboy,
     jiffy,
     epgsql,
-    eql
+    eql,
+    gun,
+    uuid
    ]},
   {mod, {x11_sentinel_server_app, []}}
  ]}.

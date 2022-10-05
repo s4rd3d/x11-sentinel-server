@@ -41,6 +41,18 @@ FROM xss.streams
 WHERE (stream_id = $1 AND
        deleted_at IS NULL)
 
+-- :select_latest_stream_by_user_id
+SELECT
+  stream_id,
+  session_id,
+  user_id,
+  created_at,
+  updated_at
+FROM xss.streams
+WHERE (user_id = $1 AND
+       deleted_at IS NULL)
+ORDER BY created_at DESC LIMIT 1
+
 -- :insert_stream
 INSERT INTO xss.streams
   (stream_id,
@@ -99,6 +111,33 @@ FROM xss.chunks
 WHERE (stream_id = $1 AND
        sequence_number = $2 AND
        deleted_at IS NULL)
+
+-- :select_chunks_by_user_id
+SELECT
+  stream_id,
+  sequence_number,
+  session_id,
+  user_id,
+  epoch_unit,
+  epoch_value,
+  submitted_at,
+  real_ip_address,
+  peer_ip_address,
+  referer,
+  chunk,
+  created_at,
+  updated_at
+FROM xss.chunks
+WHERE (user_id = $1 AND
+       deleted_at IS NULL)
+
+-- :select_sequence_numbers_by_stream_id
+SELECT
+  sequence_number
+FROM xss.chunks
+WHERE (stream_id = $1 AND
+       deleted_at IS NULL)
+ORDER BY sequence_number DESC
 
 -- :insert_chunk
 INSERT INTO xss.chunks

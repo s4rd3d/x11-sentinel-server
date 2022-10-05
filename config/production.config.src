@@ -17,6 +17,14 @@
    {db_username, "${APP_DB_USERNAME}"},
    {db_password, "${APP_DB_PASSWORD}"},
    {db_port, ${APP_DB_PORT}},
-   {db_name, "${APP_DB_NAME}"}
+   {db_name, "${APP_DB_NAME}"},
+   {minimum_event_count_for_profile,
+    ${APP_MINIMUM_EVENT_COUNT_FOR_PROFILE}},
+   {minimum_event_count_for_verification,
+    ${APP_MINIMUM_EVENT_COUNT_FOR_VERIFICATION}},
+   {minimum_elapsed_time_for_failed_profile_rebuild,
+    ${APP_MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD}},
+   {evaluation_service_host, "${APP_EVALUATION_SERVICE_HOST}"},
+   {evaluation_service_port, ${APP_EVALUATION_SERVICE_PORT}}
  ]}
 ].

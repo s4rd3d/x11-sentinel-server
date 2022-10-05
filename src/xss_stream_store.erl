@@ -12,6 +12,7 @@
 %%%=============================================================================
 
 -export([select_stream_by_stream_id/1,
+         select_latest_stream_by_user_id/1,
          insert_stream/1,
          soft_delete_stream_by_stream_id/1]).
 
@@ -34,6 +35,25 @@ select_stream_by_stream_id(StreamId) ->
         {ok, _Columns, []} ->
             {error, #{reason => stream_not_found,
                       stream_id => StreamId}};
+        {ok, _Columns, [Row | _Rest]} ->
+            {ok, parse_db_row(Row)}
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Get the latest stream from the database by the `user_id' field.
+%% @end
+%%------------------------------------------------------------------------------
+-spec select_latest_stream_by_user_id(UserId) -> Result when
+      UserId :: xss_user:user_id(),
+      Result :: {ok, xss_stream:stream()} | {error, Reason},
+      Reason :: any().
+select_latest_stream_by_user_id(UserId) ->
+    case
+      xss_database_server:execute(select_latest_stream_by_user_id, [UserId])
+    of
+        {ok, _Columns, []} ->
+            {error, #{reason => stream_not_found,
+                      user_id => UserId}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}
     end.

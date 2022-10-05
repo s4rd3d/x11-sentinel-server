@@ -153,13 +153,12 @@ do_accept_object(Request1, State) ->
     % 3. Send submitted data to storage
     Chunk = xss_chunk:new(ParsedBody, RealIpAddress, PeerIpAddress, Referer),
 
-    % 4. Maybe add new entities to DB.
+    % 4. Maybe add new user, session and stream to the database
     UserId = xss_chunk:get_user_id(Chunk),
     SessionId = xss_chunk:get_session_id(Chunk),
     StreamId = xss_chunk:get_stream_id(Chunk),
     ok = maybe_add_user(UserId),
     ok = maybe_add_session(SessionId),
-    ok = maybe_add_user_session(UserId, SessionId),
     ok = maybe_add_stream(StreamId, SessionId, UserId),
 
     % 5. Update event count of user
@@ -170,11 +169,14 @@ do_accept_object(Request1, State) ->
 
     ok = logger:info(#{message => <<"New chunk saved to the database">>,
                        user_id => UserId,
-                       session_id => SessionId,
+                       session_id => xss_chunk:get_session_id(Chunk),
                        stream_id => xss_chunk:get_stream_id(Chunk),
                        sequence_number => xss_chunk:get_sequence_number(Chunk)}),
 
-    % 7. Compile and return results.
+    % 7. Call asynchronous after persist callback function.
+    ok = xss_api_server:after_persist(UserId, Chunk),
+
+    % 8. Compile and return results.
     Response = jiffy:encode(#{<<"response">> => <<"ok">>}),
     ResponseHeaders = [{<<"access-control-allow-methods">>, <<"POST">>},
                        {<<"access-control-allow-headers">>,
@@ -295,24 +297,19 @@ maybe_add_user(UserId) ->
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc Maybe add a user - session pair to the database.
+%% @doc Increase the event count of a user.
 %% @end
 %%------------------------------------------------------------------------------
--spec maybe_add_user_session(UserId, SessionId) -> ok when
+-spec increase_event_count(UserId, EventCount) -> ok when
       UserId :: xss_user:user_id(),
-      SessionId :: xss_session:session_id().
-maybe_add_user_session(UserId, SessionId) ->
-    case
-        xss_database_server:execute(
-            select_user_session_by_user_id_and_session_id, [UserId, SessionId])
-    of
-        {ok, _Columns, [_Row | _Rest]} ->
-          ok;
-        {ok, _Columns, []} ->
-          {ok, _} = xss_database_server:execute(insert_user_session,
-                                                [UserId, SessionId]),
-          ok
-    end.
+      EventCount :: non_neg_integer().
+increase_event_count(UserId, EventCount) ->
+    {ok, User} = xss_user_store:select_user_by_user_id(UserId),
+    OldEventCount = xss_user:get_event_count(User),
+    NewEventCount = OldEventCount + EventCount,
+    {ok, _RowsEffected} =
+        xss_user_store:update_user_event_count(User, NewEventCount),
+    ok.
 
 %%------------------------------------------------------------------------------
 %% @doc Maybe add a new session to the database.
@@ -359,18 +356,3 @@ maybe_add_stream(StreamId, SessionId, UserId) ->
           {ok, _RowsEffected} = xss_stream_store:insert_stream(Stream),
           ok
     end.
-
-%%------------------------------------------------------------------------------
-%% @doc Increase the event count of a user.
-%% @end
-%%------------------------------------------------------------------------------
--spec increase_event_count(UserId, EventCount) -> ok when
-      UserId :: xss_user:user_id(),
-      EventCount :: non_neg_integer().
-increase_event_count(UserId, EventCount) ->
-    {ok, User} = xss_user_store:select_user_by_user_id(UserId),
-    OldEventCount = xss_user:get_event_count(User),
-    NewEventCount = OldEventCount + EventCount,
-    {ok, _RowsEffected} =
-        xss_user_store:update_user_event_count(User, NewEventCount),
-    ok.

@@ -42,6 +42,9 @@
 %% Applications defaults
 -define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1).
 -define(MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 1).
+-define(MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 1).
+-define(EVALUATION_SERVICE_HOST, "localhost").
+-define(EVALUATION_SERVICE_PORT, 8081).
 
 %%%=============================================================================
 %%% CT callback
@@ -89,6 +92,13 @@ init_per_suite(Config) ->
     ok = application:set_env(?APPLICATION,
                              minimum_event_count_for_verification,
                              ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION),
+    ok = application:set_env(?APPLICATION,
+                             evaluation_service_host,
+                             ?EVALUATION_SERVICE_HOST),
+    ok = application:set_env(?APPLICATION,
+                             evaluation_service_port,
+                             ?EVALUATION_SERVICE_PORT),
+
     {ok, _} = application:ensure_all_started(?APPLICATION),
     Config.
 
@@ -214,6 +224,8 @@ models_query_test(_Config) ->
                    session_id := ?DEFAULT_SESSION_ID,
                    user_id := ?DEFAULT_USER_ID},
                  Stream2),
+    {ok, Stream3} = xss_stream_store:select_latest_stream_by_user_id(?DEFAULT_USER_ID),
+    ?assertEqual(Stream2, Stream3),
 
     % chunk
     {ok, Chunk2} = xss_chunk_store:select_chunk_by_stream_id_and_sequence_number(?DEFAULT_STREAM_ID, 0),
@@ -228,6 +240,9 @@ models_query_test(_Config) ->
                    peer_ip_address := <<"127.0.0.1">>,
                    referer := <<"localhost">>,
                    chunk := []}, Chunk2),
+
+    {ok, SequenceNumbers} = xss_chunk_store:select_sequence_numbers_by_stream_id(?DEFAULT_STREAM_ID),
+    ?assertEqual([0], SequenceNumbers),
 
     % profile
     {ok, Profile2} =

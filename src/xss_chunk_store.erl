@@ -12,6 +12,8 @@
 %%%=============================================================================
 
 -export([select_chunk_by_stream_id_and_sequence_number/2,
+         select_chunks_by_user_id/1,
+         select_sequence_numbers_by_stream_id/1, %TODO
          insert_chunk/1,
          soft_delete_chunk_by_stream_id_and_sequence_number/2]).
 
@@ -41,6 +43,42 @@ select_chunk_by_stream_id_and_sequence_number(StreamId, SequenceNumber) ->
                       sequence_number => SequenceNumber}};
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Get all chunks from the database which belong to the given `user_id'
+%%      field.
+%% @end
+%%------------------------------------------------------------------------------
+-spec select_chunks_by_user_id(UserId) -> Result when
+      UserId :: xss_user:user_id(),
+      Result :: {ok, [xss_chunk:chunk()]}.
+select_chunks_by_user_id(UserId) ->
+    case
+      xss_database_server:execute(select_chunks_by_user_id, [UserId])
+    of
+        {ok, _Columns, []} ->
+            {ok, []};
+        {ok, _Columns, Rows} ->
+            {ok, lists:map(fun parse_db_row/1, Rows)}
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Get all chunk sequence numbers from the database which belong to the
+%%      given stream by the `stream_id' field.
+%% @end
+%%------------------------------------------------------------------------------
+-spec select_sequence_numbers_by_stream_id(StreamId) -> Result when
+      StreamId :: xss_stream:stream_id(),
+      Result :: {ok, [xss_chunk:sequence_number()]}.
+select_sequence_numbers_by_stream_id(StreamId) ->
+    case
+      xss_database_server:execute(select_sequence_numbers_by_stream_id, [StreamId])
+    of
+        {ok, _Columns, []} ->
+            {ok, []};
+        {ok, _Columns, Rows} ->
+            {ok, lists:map(fun ({SequenceNumber}) -> SequenceNumber end, Rows)}
     end.
 
 %%------------------------------------------------------------------------------

@@ -48,5 +48,11 @@ init(_Config = #{}) ->
                     restart => permanent,
                     shutdown => 1000,
                     type => worker,
-                    modules => [xss_database_server]}],
+                    modules => [xss_database_server]},
+                  #{id => xss_api_server,
+                    start => {xss_api_server, start_link, []},
+                    restart => permanent,
+                    shutdown => 1000,
+                    type => worker,
+                    modules => [xss_api_server]}],
     {ok, {SupFlags, ChildSpecs}}.

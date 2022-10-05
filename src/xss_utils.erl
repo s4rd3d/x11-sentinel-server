@@ -15,7 +15,13 @@
          epgsql_timestamp_to_xss_timestamp/1,
          camel_to_snake/1,
          snake_to_camel/1,
-         null_to_undefined/1]).
+         null_to_undefined/1,
+         generate_uuid/0,
+         minimum_event_count_for_profile/0,
+         minimum_event_count_for_verification/0,
+         minimum_elapsed_time_for_failed_profile_rebuild/0,
+         evaluation_service_host/0,
+         evaluation_service_port/0]).
 
 -export_type([xss_timestamp/0,
               epgsql_timestamp/0]).
@@ -26,6 +32,21 @@
 
 % calendar:datetime_to_gregorian_seconds({{1970, 1, 1},{0, 0, 0}})
 -define(GREGORIAN_1970, 62167219200).
+
+%% Minimum event count for profile building
+-define(DEFAULT_MINIMUM_EVENT_COUNT_FOR_PROFILE, 1000000). % 1_000_000
+
+%% Minimum event count for verification
+-define(DEFAULT_MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 720).
+
+%% Minimum time in milliseconds after a failed profile can be rebuilt (1 hour)
+-define(DEFAULT_MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 3600000).
+
+%% Host of the evaluation service
+-define(DEFAULT_EVALUATION_SERVICE_HOST, "localhost").
+
+%% Evaluation service port
+-define(DEFAULT_EVALUATION_SERVICE_PORT, 8081).
 
 %%%=============================================================================
 %%% Types
@@ -122,6 +143,8 @@ key_camel_to_snake(<<"sessionId">>) ->
     session_id;
 key_camel_to_snake(<<"sequenceNumber">>) ->
     sequence_number;
+key_camel_to_snake(<<"profileData">>) ->
+    profile_data;
 key_camel_to_snake(Binary) when is_binary(Binary) ->
     binary_to_atom(Binary, utf8);
 key_camel_to_snake(Key) ->
@@ -158,6 +181,8 @@ key_snake_to_camel(session_id) ->
     <<"sessionId">>;
 key_snake_to_camel(sequence_number) ->
     <<"sequenceNumber">>;
+key_snake_to_camel(profile_data) ->
+    <<"profileData">>;
 key_snake_to_camel(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom);
 key_snake_to_camel(Key) ->
@@ -173,3 +198,67 @@ null_to_undefined(null) ->
     undefined;
 null_to_undefined(Value) ->
     Value.
+
+%%------------------------------------------------------------------------------
+%% @doc Generate a unique identifier.
+%% @end
+%%------------------------------------------------------------------------------
+-spec generate_uuid() -> Uuid when
+      Uuid :: binary().
+generate_uuid() ->
+    list_to_binary(uuid:to_string(uuid:uuid4())).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the minimum event count needed for profile building.
+%% @end
+%%------------------------------------------------------------------------------
+-spec minimum_event_count_for_profile() -> EventCount when
+      EventCount :: non_neg_integer().
+minimum_event_count_for_profile() ->
+    application:get_env(?APPLICATION,
+                        minimum_event_count_for_profile,
+                        ?DEFAULT_MINIMUM_EVENT_COUNT_FOR_PROFILE).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the minimum event count needed for verification.
+%% @end
+%%------------------------------------------------------------------------------
+-spec minimum_event_count_for_verification() -> EventCount when
+      EventCount :: non_neg_integer().
+minimum_event_count_for_verification() ->
+    application:get_env(?APPLICATION,
+                        minimum_event_count_for_verification,
+                        ?DEFAULT_MINIMUM_EVENT_COUNT_FOR_VERIFICATION).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the minimum time for profile rebuilding.
+%% @end
+%%------------------------------------------------------------------------------
+-spec minimum_elapsed_time_for_failed_profile_rebuild() -> Time when
+      Time :: integer().
+minimum_elapsed_time_for_failed_profile_rebuild() ->
+    application:get_env(?APPLICATION,
+                        minimum_elapsed_time_for_failed_profile_rebuild,
+                        ?DEFAULT_MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the evaluation service host.
+%% @end
+%%------------------------------------------------------------------------------
+-spec evaluation_service_host() -> Host when
+      Host :: string().
+evaluation_service_host() ->
+    application:get_env(?APPLICATION,
+                        evaluation_service_host,
+                        ?DEFAULT_EVALUATION_SERVICE_HOST).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the evaluation service port.
+%% @end
+%%------------------------------------------------------------------------------
+-spec evaluation_service_port() -> Port when
+      Port :: integer().
+evaluation_service_port() ->
+    application:get_env(?APPLICATION,
+                        evaluation_service_port,
+                        ?DEFAULT_EVALUATION_SERVICE_PORT).

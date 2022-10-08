@@ -14,3 +14,6 @@ services:
     restart: unless-stopped
     ports:
     - "5050:80"
+  evaluation:
+    ports:
+    - "4000:4000"

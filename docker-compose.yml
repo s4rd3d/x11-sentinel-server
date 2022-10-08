@@ -46,6 +46,22 @@ services:
     restart: unless-stopped
     volumes:
      - db-data:/var/lib/postgresql/data
+  evaluation:
+    build:
+      context: ./evaluation/
+      args:
+        # Build time arguments
+        EVALUATION_PORT: ${EVALUATION_PORT}
+    restart: unless-stopped
+    environment:
+    # Common variables
+    - EVALUATION_PORT
+    # Runtime variables
+    - EVALUATION_RESPONSE_DIR
+    networks:
+    - x11_sentinel_server
+    volumes:
+    - evaluation-response-data:/srv/data
 
 networks:
   x11_sentinel_server:
@@ -55,3 +71,4 @@ networks:
 
 volumes:
   db-data:
+  evaluation-response-data:

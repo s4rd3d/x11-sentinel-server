@@ -2,6 +2,7 @@
 -include("x11_sentinel_server.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("common_test/include/ct.hrl").
 
 %%%=============================================================================
 %%% Exports
@@ -32,7 +33,7 @@
 -define(DB_NAME, "xss").
 
 %% Default model identifiers and data
--define(DEFAULT_USER_ID, <<"default user">>).
+-define(DEFAULT_USER_ID, <<"user@test">>).
 -define(DEFAULT_SESSION_ID, <<"default session">>).
 -define(DEFAULT_STREAM_ID, <<"default stream">>).
 -define(DEFAULT_PROFILE_ID, <<"default profile">>).
@@ -40,11 +41,18 @@
 -define(DEFAULT_VERIFICATION_ID, <<"default verification">>).
 
 %% Applications defaults
--define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1).
+-define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1000).
 -define(MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 1).
--define(MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 1).
+-define(MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 2000000). % 2 seconds
 -define(EVALUATION_SERVICE_HOST, "localhost").
 -define(EVALUATION_SERVICE_PORT, 8081).
+
+%% Mock data
+-define(VERIFICATION_RESULT, 0.42).
+
+%% Helper function defaults
+-define(SLEEP_PERIOD, 500).
+-define(WAIT_TIMEOUT, 5000).
 
 %%%=============================================================================
 %%% CT callback
@@ -60,7 +68,9 @@ all() ->
     [http_connectivity_test,
      db_connectivity_test,
      models_query_test,
-     chunk_submission_test].
+     chunk_submission_test,
+     decide_action_test,
+     status_rest_handler_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -93,12 +103,16 @@ init_per_suite(Config) ->
                              minimum_event_count_for_verification,
                              ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION),
     ok = application:set_env(?APPLICATION,
+                             minimum_elapsed_time_for_failed_profile_rebuild,
+                             ?MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD),
+    ok = application:set_env(?APPLICATION,
                              evaluation_service_host,
                              ?EVALUATION_SERVICE_HOST),
     ok = application:set_env(?APPLICATION,
                              evaluation_service_port,
                              ?EVALUATION_SERVICE_PORT),
 
+    {ok, _} = application:ensure_all_started(meck),
     {ok, _} = application:ensure_all_started(?APPLICATION),
     Config.
 
@@ -124,8 +138,35 @@ end_per_suite(_Config) ->
 -spec init_per_testcase(Testcase, Config) -> Config when
       Testcase :: ct_suite:ct_testname(),
       Config :: ct_suite:ct_config().
-init_per_testcase(_Testcase, Config) ->
-    Config.
+init_per_testcase(status_rest_handler_test, _Config) ->
+    meck:new(xss_api_server, [unstick, passthrough]),
+    meck:expect(xss_api_server,
+                handle_cast,
+                fun
+                  ({build_profile, #{profile_id := ProfileId}}, State) ->
+                      {ok, 1} = xss_profile_store:update_profile_success(ProfileId, <<>>),
+                      {noreply, State};
+                  ({verify, #{profile_id := ProfileId}}, State) ->
+                      VerificationId = ?DEFAULT_VERIFICATION_ID,
+                      Verification = xss_verification:new(#{verification_id => VerificationId,
+                                                            profile_id => ProfileId,
+                                                            stream_id => ?DEFAULT_STREAM_ID,
+                                                            last_chunk => 0,
+                                                            chunk_count => 0}),
+                      {ok, 1} = xss_verification_store:insert_verification(Verification),
+                      {ok, 1} = xss_verification_store:update_verification_success(VerificationId, ?VERIFICATION_RESULT),
+                      {noreply, State};
+                  (Request, State) ->
+                      meck:passthrough([Request, State])
+                end),
+    init_per_testcase_common();
+init_per_testcase(_Testcase, _Config) ->
+    init_per_testcase_common().
+
+init_per_testcase_common() ->
+    % Initialize counter reference
+    Counter = counters:new(1, []),
+    [{counter, Counter}].
 
 %%------------------------------------------------------------------------------
 %% @doc Clean up after a test case.
@@ -134,10 +175,18 @@ init_per_testcase(_Testcase, Config) ->
 -spec end_per_testcase(Testcase, Config) -> ok when
       Testcase :: ct_suite:ct_testname(),
       Config :: ct_suite:ct_config().
+end_per_testcase(status_rest_handler_test, _Config) ->
+    % Unload mocked modules
+    meck:unload(),
+    end_per_testcase_common();
 end_per_testcase(_Testcase, _Config)->
+    end_per_testcase_common().
+
+end_per_testcase_common() ->
     % Clean up database
     ok = xss_database_server:empty_tables(),
     ok.
+
 
 %%%=============================================================================
 %%% Test cases
@@ -155,6 +204,7 @@ http_connectivity_test(_Config) ->
                       application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
     StreamRef = gun:head(ConnPid, "/"),
     ?assertMatch({response, fin, _, _Headers}, gun:await(ConnPid, StreamRef)),
+    ok = gun:shutdown(ConnPid),
     ok.
 
 %%------------------------------------------------------------------------------
@@ -182,14 +232,17 @@ db_connectivity_test(_Config) ->
 %%------------------------------------------------------------------------------
 -spec models_query_test(Config) -> ok when
       Config :: ct_suite:ct_config().
-models_query_test(_Config) ->
+models_query_test(Config) ->
+    % Get counter reference from test configuration.
+    Counter = ?config(counter, Config),
+
     % 1. Create models with default configurations and save them to the db.
     User1 = xss_user:new(#{user_id => ?DEFAULT_USER_ID}),
     Session1 = xss_session:new(#{session_id => ?DEFAULT_SESSION_ID}),
     Stream1 = xss_stream:new(#{stream_id => ?DEFAULT_STREAM_ID,
                                session_id => ?DEFAULT_SESSION_ID,
                                user_id => ?DEFAULT_USER_ID}),
-    Chunk1 = do_create_new_chunk(),
+    Chunk1 = do_create_new_chunk(Counter),
     Profile1 = xss_profile:new(#{profile_id => ?DEFAULT_PROFILE_ID,
                                  user_id => ?DEFAULT_USER_ID}),
     Verification1 =
@@ -383,7 +436,7 @@ chunk_submission_test(_Config) ->
                                        <<"value">> => 42}},
                <<"chunk">> => [<<"some event">>]},
 
-    Body = jiffy:encode(xss_utils:camel_to_snake(Chunk1), [force_utf8]),
+    Body = jiffy:encode(Chunk1, [force_utf8]),
     StreamRef = gun:post(ConnPid,
                          "/api/1/s",
                          [{<<"content-type">>, <<"application/json">>}],
@@ -418,6 +471,248 @@ chunk_submission_test(_Config) ->
                  Chunk2),
     ok.
 
+%%------------------------------------------------------------------------------
+%% @doc Test the profile building business logic.
+%%
+%%      The test scenario is structured as follows:
+%%
+%%      1.  Register entities into to database.
+%%
+%%      2.  Add an empty chunk to the database registered to the test user.
+%%
+%%      3.  Check the action that needs to be performed, it should be
+%%          `not_enough_data_for_profile_building'.
+%%
+%%      4.  Update the event count of the user to have enough data to build a
+%%          profile.
+%%
+%%      5.  Check the action that needs to be performed, it should be
+%%          `build_profile'.
+%%
+%%      6.  Add a profile to the database which is not built yet (i.e.
+%%          `succeded_at' and `failed_at' fields are undefined).
+%%
+%%      7.  Check the action that needs to be performed, it should be
+%%          `profile_building_is_in_progress'.
+%%
+%%      8.  Update the profile's `failed_at' field to now.
+%%
+%%      9.  Check the action that needs to be performed, it should be
+%%          `cannot_rebuild_new_profile'.
+%%
+%%      10. Wait for the defined amount of time for profile rebuilding (it is
+%%          defined in the `MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD'
+%%          macro).
+%%
+%%      11.  Check the action that needs to be performed, it should be
+%%          `build_profile'.
+%%
+%%      12.  Add a new profile to the database and update the `succeeded_at'
+%%           field.
+%%
+%%      13.  Check the action that needs to be performed, it should be `verify'.
+%% @end
+%%------------------------------------------------------------------------------
+-spec decide_action_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+decide_action_test(Config) ->
+    % Get counter reference from test configuration.
+    Counter = ?config(counter, Config),
+
+    % 1.  Register entities into to database.
+    User1 = xss_user:new(#{user_id => ?DEFAULT_USER_ID}),
+    Session = xss_session:new(#{session_id => ?DEFAULT_SESSION_ID}),
+    Stream = xss_stream:new(#{stream_id => ?DEFAULT_STREAM_ID,
+                               session_id => ?DEFAULT_SESSION_ID,
+                               user_id => ?DEFAULT_USER_ID}),
+
+    ?assertMatch({ok, 1}, xss_user_store:insert_user(User1)),
+    ?assertMatch({ok, 1}, xss_session_store:insert_session(Session)),
+    ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream)),
+
+    % 2.  Add an empty chunk to the database registered to the test user.
+    Chunk1 = do_create_new_chunk(Counter),
+    ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk1)),
+
+    % 3.  Check the action that needs to be performed.
+    ?assertEqual({nop, not_enough_data_for_profile_building},
+                 xss_api_server:decide_action(User1)),
+
+    % 4.  Update the eventcount of the user.
+    EventCount = ?MINIMUM_EVENT_COUNT_FOR_PROFILE,
+    ?assertMatch({ok, 1},
+                 xss_user_store:update_user_event_count(User1, EventCount)),
+    {ok, User2} = xss_user_store:select_user_by_user_id(?DEFAULT_USER_ID),
+
+    % 5.   Check the action that needs to be performed, it should be
+    %      `build_profile'.
+    ?assertMatch({build_profile, _Profile}, xss_api_server:decide_action(User2)),
+
+    % 6.   Add a profile to the database which is not built yet.
+    Profile1 = xss_profile:new(#{profile_id => ?DEFAULT_PROFILE_ID,
+                                user_id => ?DEFAULT_USER_ID}),
+    ?assertEqual({ok, 1}, xss_profile_store:insert_profile(Profile1)),
+
+    % 7.  Check the action that needs to be performed, it should be
+    %     `profile_building_is_in_progress'.
+    ?assertEqual({nop, profile_building_is_in_progress},
+                  xss_api_server:decide_action(User2)),
+
+    % 8.  Update the profile's `failed_at' field to now.
+    ProfileId1 = xss_profile:get_profile_id(Profile1),
+    ?assertEqual({ok, 1}, xss_profile_store:update_profile_failure(ProfileId1)),
+
+    % 9.  Check the action that needs to be performed, it should be
+    %     `cannot_rebuild_new_profile'.
+    ?assertEqual(xss_api_server:decide_action(User2),
+                 {nop, cannot_rebuild_new_profile}),
+
+    % 10. Wait for the defined amount of time for profile rebuilding.
+    MilliSeconds = ?MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD div 1000 + 1,
+    receive
+    after
+        MilliSeconds ->
+            % 11.  Check the action that needs to be performed, it should be
+            %      `build_profile'.
+            ?assertMatch({build_profile, _Profile},
+                          xss_api_server:decide_action(User2))
+    end,
+
+    % 12.  Add a new profile to the database and update the `succeeded_at'
+    %      field.
+    ProfileId2 = xss_utils:generate_uuid(),
+    Profile2 = xss_profile:new(#{profile_id => ProfileId2,
+                                 user_id => ?DEFAULT_USER_ID}),
+    ?assertEqual({ok, 1}, xss_profile_store:insert_profile(Profile2)),
+    ?assertEqual({ok, 1}, xss_profile_store:update_profile_success(ProfileId2,
+                                                                   <<>>)),
+
+    % 13.  Check the action that needs to be performed, it should be `verify'.
+    ?assertMatch({verify, _Profile}, xss_api_server:decide_action(User2)),
+
+    ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Test the status REST handler.
+%%
+%%      The test scenario is structured as follows:
+%%
+%%      1.  Send an empty chunk to the server.
+%%
+%%      2.  Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "learn", "value": 0.0}'
+%%
+%%      3.  Send a chunk to server so that the event count does not exceed the
+%%          value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
+%%
+%%      4.  Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "learn", "value": Value}' where `Value' is
+%%          between 0.0 and 1.0.
+%%
+%%      5.  Send a chunks to the server so that the event count exceeds the
+%%          value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
+%%
+%%      6.  Wait for the profile building.
+%%
+%%      7.  Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "learn", "value": 1}'.
+%%
+%%      8.  Send a chunk to the server so that the event count exceeds the
+%%          value of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
+%%
+%%      9.  Wait for the profile verification.
+%%
+%%      10. Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "verify", "value": Value}' where `Value'
+%%          should math the value of the ?VERIFICATION_RESULT macro.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec status_rest_handler_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+status_rest_handler_test(Config) ->
+    % Get counter reference from test configuration.
+    Counter = ?config(counter, Config),
+
+    % 1.  Send an empty chunk to the server.
+    ok = do_submit_chunk(do_create_new_chunk(Counter)),
+
+    % 2.  Send a request to the status REST handler and check the result.
+    %     It should be `{"phase": "learn", "value": 0.0}'
+    ?assertMatch(#{<<"phase">> := <<"learn">>, <<"value">> := 0.0},
+                 do_call_status(?DEFAULT_USER_ID)),
+
+    % 3.  Send a chunks to the server so that the event count does not exceed
+    %     the value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
+    EventCount1 = ?MINIMUM_EVENT_COUNT_FOR_PROFILE div 2,
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount1)),
+
+    % 4.  Send a request to the status REST handler and check the result.
+    %     It should be `{"phase": "learn", "value": Value}' where `Value' is
+    %     between 0.0 and 1.0.
+    ?assertMatch(#{<<"phase">> := <<"learn">>,
+                   <<"value">> := Value} when Value > 0.0 andalso Value < 1.0,
+                 do_call_status(?DEFAULT_USER_ID)),
+
+    % 5.  Send a chunk to the server so that the event count exceeds the
+    %     value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
+    EventCount2 = ?MINIMUM_EVENT_COUNT_FOR_PROFILE,
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount2)),
+
+    % 6.  Wait for the profile building.
+    ok = wait_until(
+      fun() ->
+          Result =
+            xss_profile_store:select_latest_profile_by_user_id(?DEFAULT_USER_ID),
+          case
+              Result
+          of
+            {ok, _Profile} ->
+                true;
+            {error, _Reason} ->
+                false
+          end
+      end,
+      ?SLEEP_PERIOD,
+      ?WAIT_TIMEOUT),
+
+    % 7.  Send a request to the status REST handler and check the result.
+    %     It should be `{"phase": "learn", "value": 1}'.
+    ?assertMatch(#{<<"phase">> := <<"learn">>, <<"value">> := 1},
+                 do_call_status(?DEFAULT_USER_ID)),
+
+    % 8.  Send a chunk to the server so that the event count exceeds the value
+    %     of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
+    EventCount3 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION,
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount3)),
+
+    % 9.  Wait for the profile verification.
+    ok = wait_until(
+      fun() ->
+          Result =
+            xss_verification_store:select_latest_succeeded_verification_by_user_id(?DEFAULT_USER_ID),
+          case
+              Result
+          of
+            {ok, _Verification} ->
+                true;
+            {error, _Reason} ->
+                false
+          end
+
+      end,
+      ?SLEEP_PERIOD,
+      ?WAIT_TIMEOUT),
+
+    % 10. Send a request to the status REST handler and check the result.
+    %     It should be `{"phase": "verify", "value": Value}' where `Value'
+    %     should math the value of the ?VERIFICATION_RESULT macro.
+    ?assertMatch(#{<<"phase">> := <<"verify">>,
+                   <<"value">> := ?VERIFICATION_RESULT},
+                 do_call_status(?DEFAULT_USER_ID)),
+
+    ok.
+
 %%%=============================================================================
 %%% Helper functions
 %%%=============================================================================
@@ -426,14 +721,126 @@ chunk_submission_test(_Config) ->
 %% @doc Create a new chunk with the default parameters.
 %% @end
 %%------------------------------------------------------------------------------
--spec do_create_new_chunk() -> Chunk when
+-spec do_create_new_chunk(Counter) -> Chunk when
+      Counter :: counters:counters_ref(),
       Chunk :: xss_chunk:chunk().
-do_create_new_chunk() ->
+do_create_new_chunk(Counter) ->
     LooseChunk = #{chunk => [],
                    metadata =>
                      #{user_id => ?DEFAULT_USER_ID,
                        session_id => ?DEFAULT_SESSION_ID,
                        stream_id => ?DEFAULT_STREAM_ID,
-                       sequence_number => 0,
+                       sequence_number => get_next_sequnce_number(Counter),
                        epoch => #{unit => milisecond, value => 0}}},
     xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
+
+%%------------------------------------------------------------------------------
+%% @doc Create a new chunk with given event count and sequence number.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_create_new_chunk(Counter, EventCount) -> Chunk when
+      Counter :: counters:counters_ref(),
+      EventCount :: non_neg_integer(),
+      Chunk :: xss_chunk:chunk().
+do_create_new_chunk(Counter, EventCount) ->
+  LooseChunk = #{chunk => lists:seq(1, EventCount),
+                 metadata =>
+                   #{user_id => ?DEFAULT_USER_ID,
+                     session_id => ?DEFAULT_SESSION_ID,
+                     stream_id => ?DEFAULT_STREAM_ID,
+                     sequence_number => get_next_sequnce_number(Counter),
+                     epoch => #{unit => milisecond, value => 0}}},
+  xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
+
+%%------------------------------------------------------------------------------
+%% @doc Submit a chunk to the submission end point.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_submit_chunk(Chunk) -> ok when
+      Chunk :: xss_chunk:chunk().
+do_submit_chunk(Chunk) ->
+    {ok, ConnPid} = gun:open(
+                      ?DEFAULT_HOST,
+                      application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    Body1 = jiffy:encode(Chunk, [force_utf8]),
+    StreamRef = gun:post(ConnPid,
+                         "/api/1/s",
+                         [{<<"content-type">>, <<"application/json">>}],
+                         Body1),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body2} = gun:await_body(ConnPid, StreamRef),
+    ?assertMatch(#{<<"response">> := <<"ok">>},
+                 jiffy:decode(Body2, [return_maps])),
+    ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Call the status endpoint with a given user ID and return the parsed
+%%      result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_status(UserId) -> Response when
+      UserId :: xss_user:user_id(),
+      Response :: #{binary() => binary() | float()}.
+do_call_status(UserId) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/status/", UserId/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+
+%%------------------------------------------------------------------------------
+%% @doc Read the counter, then increment it's value by 1.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_next_sequnce_number(Counter) -> integer() when
+      Counter :: counters:counters_ref().
+get_next_sequnce_number(Counter) ->
+    SequenceNumber = counters:get(Counter, 1),
+    ok = counters:add(Counter, 1, 1),
+    SequenceNumber.
+
+%%------------------------------------------------------------------------------
+%% @doc Wait until the predicate function returns true or until timeout.
+%% @end
+%%------------------------------------------------------------------------------
+-spec wait_until(Function, SleepPeriod, WaitTimeout) -> ok | timeout when
+      Function :: fun(),
+      SleepPeriod :: integer(),
+      WaitTimeout :: integer().
+wait_until(Function, SleepPeriod, WaitTimeout) ->
+    StartTime = erlang:system_time(millisecond),
+    do_wait_until(Function, SleepPeriod, WaitTimeout, StartTime).
+
+
+%%------------------------------------------------------------------------------
+%% @doc Helper function for `wait_until/3'
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_wait_until(Function, SleepPeriod, WaitTimeout, StartTime) -> ok | timeout when
+      Function :: fun(),
+      SleepPeriod :: integer(),
+      WaitTimeout :: integer(),
+      StartTime :: integer().
+do_wait_until(Function, SleepPeriod, WaitTimeout, StartTime) ->
+    case
+        (erlang:system_time(millisecond) - StartTime) < WaitTimeout
+    of
+        true ->
+            case
+                Function()
+            of
+              true ->
+                  ok;
+              false ->
+                  timer:sleep(SleepPeriod),
+                  do_wait_until(Function, SleepPeriod, WaitTimeout, StartTime)
+            end;
+        false ->
+            timeout
+    end.

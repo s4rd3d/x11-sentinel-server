@@ -25,6 +25,12 @@
 %% API functions
 -export([after_persist/2]).
 
+%% Test only exports
+-ifdef(TEST).
+-export([decide_action/1]).
+-endif. % -ifdef(TEST)
+
+
 %%%=============================================================================
 %%% Macros
 %%%=============================================================================
@@ -290,8 +296,8 @@ decide_action(User) ->
                                 can_rebuild_profile(Profile)
                             of
                                 true ->
-                                    Profile = insert_empty_profile(UserId),
-                                    {build_profile, Profile};
+                                    EmptyProfile = insert_empty_profile(UserId),
+                                    {build_profile, EmptyProfile};
                                 false ->
                                     {nop, cannot_rebuild_new_profile}
                             end
@@ -407,6 +413,7 @@ call_build_profile(Chunks) ->
                          jiffy:encode(#{chunks => Chunks})),
     {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef),
     {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
     case
         xss_utils:camel_to_snake(jiffy:decode(Body, [return_maps]))
     of
@@ -469,6 +476,7 @@ do_call_verify(Chunks, Profile) ->
                          jiffy:encode(#{chunks => Chunks, profile => Profile})),
     {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef),
     {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
     case
         xss_utils:camel_to_snake(jiffy:decode(Body, [return_maps]))
     of

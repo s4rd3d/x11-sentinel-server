@@ -228,6 +228,13 @@ SET failed_at = $1,
 WHERE (profile_id = $3 AND
        deleted_at IS NULL)
 
+-- :cleanup_profiles
+UPDATE xss.profiles
+SET failed_at = $1,
+    updated_at = $2
+WHERE (succeeded_at IS NULL AND
+       failed_at IS NULL)
+
 -- :soft_delete_profile_by_profile_id
 UPDATE xss.profiles
 SET updated_at = $1,
@@ -287,7 +294,7 @@ WHERE (p.user_id = $1 AND
        p.deleted_at IS NULL AND
        v.deleted_at IS NULL AND
        v.succeeded_at IS NOT NULL)
-ORDER BY v.succeeded_at
+ORDER BY v.succeeded_at DESC
 LIMIT 1
 
 -- :insert_verification
@@ -315,6 +322,13 @@ SET failed_at = $1,
     updated_at = $2
 WHERE (verification_id = $3 AND
        deleted_at IS NULL)
+
+-- :cleanup_verifications
+UPDATE xss.verifications
+SET failed_at = $1,
+    updated_at = $2
+WHERE (succeeded_at IS NULL AND
+       failed_at IS NULL)
 
 -- :soft_delete_verification_by_verification_id
 UPDATE xss.verifications

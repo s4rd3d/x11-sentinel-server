@@ -49,7 +49,14 @@ start(_StartType, _StartArgs) ->
     {ok, _} = cowboy:start_clear(?DEFAULT_LISTENER_NAME,
                                  [{port, Port}],
                                  #{env => #{dispatch => DispatchRules}}),
-    x11_sentinel_server_sup:start_link().
+    Result = x11_sentinel_server_sup:start_link(),
+
+    % Cleanup stuck profile building and verifications from the database
+    Now = xss_utils:xss_timestamp_to_epgsql_timestamp(xss_utils:now()),
+    {ok, _} = xss_database_server:execute(cleanup_profiles, [Now, Now]),
+    {ok, _} = xss_database_server:execute(cleanup_verifications, [Now, Now]),
+
+    Result.
 
 %%%-----------------------------------------------------------------------------
 %% @doc Stop the application

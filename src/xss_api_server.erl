@@ -123,9 +123,11 @@ handle_call(Request, From, State) ->
                 {stop, Reason, state()},
       Reason :: term().
 handle_cast({after_persist, UserId, Chunk}, State) ->
-    % 1. Save user - session to the database if needed.
+    % 1. Save user - session and user - stream to the database if needed.
     SessionId = xss_chunk:get_session_id(Chunk),
+    StreamId = xss_chunk:get_stream_id(Chunk),
     ok = maybe_add_user_session(UserId, SessionId),
+    ok = maybe_add_user_stream(UserId, StreamId),
 
     % 2. Build a profile or execute a verification if needed.
     ok = maybe_build_profile_or_verify(UserId),
@@ -225,11 +227,37 @@ maybe_add_user_session(UserId, SessionId) ->
             select_user_session_by_user_id_and_session_id, [UserId, SessionId])
     of
         {ok, _Columns, [_Row | _Rest]} ->
-          ok;
+            ok;
         {ok, _Columns, []} ->
-          {ok, _} = xss_database_server:execute(insert_user_session,
-                                                [UserId, SessionId]),
-          ok
+            ok = logger:info(#{message => <<"Adding new user-session">>,
+                               session_id => SessionId,
+                               user_id => UserId}),
+            {ok, _} = xss_database_server:execute(insert_user_session,
+                                                  [UserId, SessionId]),
+            ok
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Maybe add a user - stream pair to the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_add_user_stream(UserId, StreamId) -> ok when
+      UserId :: xss_user:user_id(),
+      StreamId :: xss_stream:stream_id().
+maybe_add_user_stream(UserId, StreamId) ->
+    case
+        xss_database_server:execute(
+            select_user_stream_by_user_id_and_stream_id, [UserId, StreamId])
+    of
+        {ok, _Columns, [_Row | _Rest]} ->
+            ok;
+        {ok, _Columns, []} ->
+            ok = logger:info(#{message => <<"Adding new user-stream">>,
+                               stream_id => StreamId,
+                               user_id => UserId}),
+            {ok, _} = xss_database_server:execute(insert_user_stream,
+                                                 [UserId, StreamId]),
+            ok
     end.
 
 %%------------------------------------------------------------------------------

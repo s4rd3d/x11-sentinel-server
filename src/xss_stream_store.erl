@@ -69,12 +69,11 @@ select_latest_stream_by_user_id(UserId) ->
       Reason :: any().
 insert_stream(#{stream_id := StreamId,
                 session_id := SessionId,
-                user_id := UserId,
                 created_at := undefined,
                 updated_at := undefined}) ->
     Now = xss_utils:xss_timestamp_to_epgsql_timestamp(xss_utils:now()),
     xss_database_server:execute(insert_stream,
-                                [StreamId, SessionId, UserId, Now, Now]).
+                                [StreamId, SessionId, Now, Now]).
 
 %%------------------------------------------------------------------------------
 %% @doc Soft delete stream by setting the `deleted_at' field.
@@ -100,19 +99,16 @@ soft_delete_stream_by_stream_id(StreamId) ->
 %%-----------------------------------------------------------------------------
 -spec parse_db_row({StreamId,
                     SessionId,
-                    UserId,
                     CreatedAt,
                     UpdatedAt}) -> Stream when
       StreamId :: xss_stream:stream_id(),
       SessionId :: xss_session:session_id(),
-      UserId :: xss_user:user_id(),
       CreatedAt :: xss_utils:epgsql_timestamp() | null,
       UpdatedAt :: xss_utils:epgsql_timestamp() | null,
       Stream :: xss_stream:stream().
-parse_db_row({StreamId, SessionId, UserId, CreatedAt, UpdatedAt}) ->
+parse_db_row({StreamId, SessionId, CreatedAt, UpdatedAt}) ->
       xss_stream:new(#{stream_id => StreamId,
                        session_id => SessionId,
-                       user_id => UserId,
                        created_at =>
                         xss_utils:epgsql_timestamp_to_xss_timestamp(CreatedAt),
                        updated_at =>

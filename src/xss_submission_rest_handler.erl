@@ -351,8 +351,7 @@ maybe_add_stream(StreamId, SessionId, UserId) ->
                              session_id => SessionId,
                              user_id => UserId}),
           Stream = xss_stream:new(#{stream_id => StreamId,
-                                    session_id => SessionId,
-                                    user_id => UserId}),
+                                    session_id => SessionId}),
           {ok, _RowsEffected} = xss_stream_store:insert_stream(Stream),
           ok
     end.

@@ -34,7 +34,6 @@ WHERE (user_id = $3 AND
 SELECT
   stream_id,
   session_id,
-  user_id,
   created_at,
   updated_at
 FROM xss.streams
@@ -43,24 +42,24 @@ WHERE (stream_id = $1 AND
 
 -- :select_latest_stream_by_user_id
 SELECT
-  stream_id,
-  session_id,
-  user_id,
-  created_at,
-  updated_at
-FROM xss.streams
-WHERE (user_id = $1 AND
-       deleted_at IS NULL)
-ORDER BY created_at DESC LIMIT 1
+  s.stream_id,
+  s.session_id,
+  s.created_at,
+  s.updated_at
+FROM xss.streams s
+     INNER JOIN xss.users_streams us
+     ON s.stream_id = us.stream_id
+WHERE (us.user_id = $1 AND
+       s.deleted_at IS NULL)
+ORDER BY s.created_at DESC LIMIT 1
 
 -- :insert_stream
 INSERT INTO xss.streams
   (stream_id,
    session_id,
-   user_id,
    created_at,
    updated_at)
-VALUES ($1, $2, $3, $4, $5)
+VALUES ($1, $2, $3, $4)
 
 -- :soft_delete_stream_by_stream_id
 UPDATE xss.streams
@@ -170,12 +169,26 @@ SELECT
   session_id
 FROM xss.users_sessions
 WHERE (user_id = $1 AND
-       session_ID = $2)
+       session_id = $2)
 
 -- :insert_user_session
 INSERT INTO xss.users_sessions
   (user_id,
    session_id)
+VALUES ($1, $2)
+
+-- :select_user_stream_by_user_id_and_stream_id
+SELECT
+  user_id,
+  stream_id
+FROM xss.users_streams
+WHERE (user_id = $1 AND
+       stream_id = $2)
+
+-- :insert_user_stream
+INSERT INTO xss.users_streams
+  (user_id,
+   stream_id)
 VALUES ($1, $2)
 
 -- :select_profile_by_profile_id

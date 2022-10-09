@@ -14,7 +14,6 @@
 -export([new/1,
          get_stream_id/1,
          get_session_id/1,
-         get_user_id/1,
          get_created_at/1,
          get_updated_at/1]).
 
@@ -31,8 +30,6 @@
 -type stream() :: #{stream_id := stream_id(),
                     % The session this stream belongs to.
                     session_id := xss_user:session_id(),
-                    % The user this stream belongs to.
-                    user_id := xss_user:user_id(),
                     % When was the stream added to the database.
                     created_at := xss_utils:xss_timestamp() | undefined,
                     % When was the stream last modified.
@@ -48,21 +45,17 @@
 %%-----------------------------------------------------------------------------
 -spec new(#{stream_id := StreamId,
             session_id := SessionId,
-            user_id := UserId,
             created_at => CreatedAt,
             updated_at => UpdatedAt}) -> Stream when
       StreamId :: stream_id(),
       SessionId :: xss_session:session_id(),
-      UserId :: xss_user:user_id(),
       CreatedAt :: xss_utils:xss_timestamp() | undefined,
       UpdatedAt :: xss_utils:xss_timestamp() | undefined,
       Stream :: stream().
 new(#{stream_id := StreamId,
-      session_id := SessionId,
-      user_id := UserId} = Stream) ->
+      session_id := SessionId} = Stream) ->
     #{stream_id => StreamId,
       session_id => SessionId,
-      user_id => UserId,
       created_at => maps:get(created_at, Stream, undefined),
       updated_at => maps:get(updated_at, Stream, undefined)}.
 
@@ -85,16 +78,6 @@ get_stream_id(#{stream_id := StreamId}) ->
       SessionId :: xss_session:session_id().
 get_session_id(#{session_id := SessionId}) ->
     SessionId.
-
-%%-----------------------------------------------------------------------------
-%% @doc Get the `user_id' field of the stream.
-%% @end
-%%-----------------------------------------------------------------------------
--spec get_user_id(Stream) -> UserId when
-      Stream :: stream(),
-      UserId :: xss_user:user_id().
-get_user_id(#{user_id := UserId}) ->
-    UserId.
 
 %%-----------------------------------------------------------------------------
 %% @doc Get the `created_at' field of the stream.

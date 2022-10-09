@@ -240,8 +240,7 @@ models_query_test(Config) ->
     User1 = xss_user:new(#{user_id => ?DEFAULT_USER_ID}),
     Session1 = xss_session:new(#{session_id => ?DEFAULT_SESSION_ID}),
     Stream1 = xss_stream:new(#{stream_id => ?DEFAULT_STREAM_ID,
-                               session_id => ?DEFAULT_SESSION_ID,
-                               user_id => ?DEFAULT_USER_ID}),
+                               session_id => ?DEFAULT_SESSION_ID}),
     Chunk1 = do_create_new_chunk(Counter),
     Profile1 = xss_profile:new(#{profile_id => ?DEFAULT_PROFILE_ID,
                                  user_id => ?DEFAULT_USER_ID}),
@@ -259,6 +258,14 @@ models_query_test(Config) ->
     ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile1)),
     ?assertMatch({ok, 1}, xss_verification_store:insert_verification(Verification1)),
 
+    % Insert connection tables
+    ?assertMatch({ok, 1}, xss_database_server:execute(insert_user_session,
+                                                      [?DEFAULT_USER_ID,
+                                                       ?DEFAULT_SESSION_ID])),
+    ?assertMatch({ok, 1}, xss_database_server:execute(insert_user_stream,
+                                                      [?DEFAULT_USER_ID,
+                                                       ?DEFAULT_STREAM_ID])),
+
     % 2. Check SELECT queries and assert equality with the original models.
 
     % user
@@ -274,8 +281,7 @@ models_query_test(Config) ->
     {ok, Stream2} =
       xss_stream_store:select_stream_by_stream_id(?DEFAULT_STREAM_ID),
     ?assertMatch(#{stream_id := ?DEFAULT_STREAM_ID,
-                   session_id := ?DEFAULT_SESSION_ID,
-                   user_id := ?DEFAULT_USER_ID},
+                   session_id := ?DEFAULT_SESSION_ID},
                  Stream2),
     {ok, Stream3} = xss_stream_store:select_latest_stream_by_user_id(?DEFAULT_USER_ID),
     ?assertEqual(Stream2, Stream3),
@@ -455,8 +461,7 @@ chunk_submission_test(_Config) ->
                  User),
     ?assertMatch(#{session_id := ?DEFAULT_SESSION_ID}, Session),
     ?assertMatch(#{stream_id := ?DEFAULT_STREAM_ID,
-                   session_id := ?DEFAULT_SESSION_ID,
-                   user_id := ?DEFAULT_USER_ID},
+                   session_id := ?DEFAULT_SESSION_ID},
                  Stream),
     ?assertMatch(#{metadata := #{user_id := ?DEFAULT_USER_ID,
                                  session_id := ?DEFAULT_SESSION_ID,

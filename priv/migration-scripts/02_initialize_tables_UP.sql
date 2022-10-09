@@ -28,13 +28,17 @@ CREATE TABLE xss.users_sessions (
 CREATE TABLE xss.streams (
     stream_id VARCHAR NOT NULL PRIMARY KEY,
     session_id VARCHAR NOT NULL,
-    user_id VARCHAR NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     deleted_at TIMESTAMP NULL,
 
-    FOREIGN KEY(user_id) REFERENCES xss.users(user_id),
     FOREIGN KEY(session_id) REFERENCES xss.sessions(session_id)
+);
+
+CREATE TABLE xss.users_streams (
+    user_id VARCHAR NOT NULL REFERENCES xss.users(user_id) ON UPDATE CASCADE,
+    stream_id VARCHAR NOT NULL REFERENCES xss.streams(stream_id) ON UPDATE CASCADE,
+    CONSTRAINT users_streams_id PRIMARY KEY(user_id, stream_id)
 );
 
 CREATE TABLE xss.chunks (

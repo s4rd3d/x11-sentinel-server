@@ -11,7 +11,8 @@
     epgsql,
     eql,
     gun,
-    uuid
+    uuid,
+    iso8601
    ]},
   {mod, {x11_sentinel_server_app, []}}
  ]}.

@@ -8,6 +8,15 @@ FROM xss.users
 WHERE (user_id = $1 AND
        deleted_at IS NULL)
 
+-- :select_users
+SELECT
+  user_id,
+  event_count,
+  created_at,
+  updated_at
+FROM xss.users
+WHERE (deleted_at IS NULL)
+
 -- :insert_user
 INSERT INTO xss.users
   (user_id,
@@ -310,6 +319,37 @@ WHERE (p.user_id = $1 AND
 ORDER BY v.succeeded_at DESC
 LIMIT 1
 
+-- :select_verifications_by_user_id_and_threshold
+SELECT
+  v.verification_id,
+  v.result,
+  v.succeeded_at,
+  p.user_id
+FROM
+    xss.profiles p
+    INNER JOIN xss.verifications v
+    ON p.profile_id = v.profile_id
+WHERE (p.user_id = $1 AND
+       p.deleted_at IS NULL AND
+       v.deleted_at IS NULL AND
+       v.succeeded_at IS NOT NULL AND
+       v.result <= $2)
+
+-- :select_verifications_and_user_id_by_threshold
+SELECT
+  v.verification_id,
+  v.result,
+  v.succeeded_at,
+  p.user_id
+FROM
+    xss.profiles p
+    INNER JOIN xss.verifications v
+    ON p.profile_id = v.profile_id
+WHERE (p.deleted_at IS NULL AND
+       v.deleted_at IS NULL AND
+       v.succeeded_at IS NOT NULL AND
+       v.result <= $1)
+
 -- :insert_verification
 INSERT INTO xss.verifications
   (verification_id,
@@ -349,3 +389,23 @@ SET updated_at = $1,
     deleted_at = $2
 WHERE (verification_id = $3 AND
        deleted_at IS NULL)
+
+-- :select_events_aggregated_by_day
+SELECT
+  date_trunc('day', submitted_at) "day",
+  sum(jsonb_array_length(chunk))
+FROM  xss.chunks
+WHERE deleted_at IS NULL
+GROUP BY "day"
+ORDER BY "day" DESC
+
+-- :select_events_by_user_id_aggregated_by_day
+SELECT
+  date_trunc('day', submitted_at) "day",
+  sum(jsonb_array_length(chunk))
+FROM
+  xss.chunks
+WHERE (user_id = $1 AND
+       deleted_at IS NULL)
+GROUP BY "day"
+ORDER BY "day" DESC

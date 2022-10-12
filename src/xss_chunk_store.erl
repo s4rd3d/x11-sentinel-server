@@ -13,7 +13,7 @@
 
 -export([select_chunk_by_stream_id_and_sequence_number/2,
          select_chunks_by_user_id/1,
-         select_sequence_numbers_by_stream_id/1, %TODO
+         select_sequence_numbers_by_stream_id/1,
          insert_chunk/1,
          soft_delete_chunk_by_stream_id_and_sequence_number/2]).
 

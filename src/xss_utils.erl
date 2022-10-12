@@ -13,15 +13,19 @@
 -export([now/0,
          xss_timestamp_to_epgsql_timestamp/1,
          epgsql_timestamp_to_xss_timestamp/1,
+         epgsql_timestamp_to_iso8601/1,
+         xss_timestamp_to_iso8601/1,
          camel_to_snake/1,
          snake_to_camel/1,
          null_to_undefined/1,
          generate_uuid/0,
+         add_cors_headers/1,
          minimum_event_count_for_profile/0,
          minimum_event_count_for_verification/0,
          minimum_elapsed_time_for_failed_profile_rebuild/0,
          evaluation_service_host/0,
-         evaluation_service_port/0]).
+         evaluation_service_port/0,
+         default_verification_threshold/0]).
 
 -export_type([xss_timestamp/0,
               epgsql_timestamp/0]).
@@ -47,6 +51,12 @@
 
 %% Evaluation service port
 -define(DEFAULT_EVALUATION_SERVICE_PORT, 8081).
+
+%% Default verification threshold
+%%
+%% It is set to 1.0 which means that all verifications will be returned if the
+%% client does not specify a threshold.
+-define(DEFAULT_VERIFICATION_THRESHOLD, 1.0).
 
 %%%=============================================================================
 %%% Types
@@ -112,6 +122,28 @@ epgsql_timestamp_to_xss_timestamp({{Y, M, D}, {H, Mi, S}}) ->
         microsecond),
     GregorianSeconds + Microseconds.
 
+%%-----------------------------------------------------------------------------
+%% @doc Convert from epgsql timestamp to iso8601.
+%% @end
+%%-----------------------------------------------------------------------------
+-spec epgsql_timestamp_to_iso8601(Timestamp) -> Result when
+      Timestamp :: epgsql_timestamp(),
+      Result :: binary() | undefined.
+epgsql_timestamp_to_iso8601(null) ->
+    undefined;
+epgsql_timestamp_to_iso8601(Timestamp) ->
+    iso8601:format(Timestamp).
+
+%%-----------------------------------------------------------------------------
+%% @doc Convert from xss timestamp to iso8601.
+%% @end
+%%-----------------------------------------------------------------------------
+-spec xss_timestamp_to_iso8601(Timestamp) -> Result when
+      Timestamp :: xss_timestamp(),
+      Result :: binary() | undefined.
+xss_timestamp_to_iso8601(Timestamp) ->
+  epgsql_timestamp_to_iso8601(xss_timestamp_to_epgsql_timestamp(Timestamp)).
+
 %%------------------------------------------------------------------------------
 %% @doc Transform camelCase keys in a map recursively to snake_case.
 %% @end
@@ -141,10 +173,28 @@ key_camel_to_snake(<<"userId">>) ->
     user_id;
 key_camel_to_snake(<<"sessionId">>) ->
     session_id;
+key_camel_to_snake(<<"verificationId">>) ->
+    verification_id;
+key_camel_to_snake(<<"profileId">>) ->
+    profile_id;
 key_camel_to_snake(<<"sequenceNumber">>) ->
     sequence_number;
 key_camel_to_snake(<<"profileData">>) ->
     profile_data;
+key_camel_to_snake(<<"lastChunk">>) ->
+    last_chunk;
+key_camel_to_snake(<<"chunkCount">>) ->
+    chunk_count;
+key_camel_to_snake(<<"eventCount">>) ->
+    event_count;
+key_camel_to_snake(<<"createddAt">>) ->
+    created_at;
+key_camel_to_snake(<<"succeededAt">>) ->
+    succeeded_at;
+key_camel_to_snake(<<"faileddAt">>) ->
+    failed_at;
+key_camel_to_snake(<<"updatedAt">>) ->
+    updated_at;
 key_camel_to_snake(Binary) when is_binary(Binary) ->
     binary_to_atom(Binary, utf8);
 key_camel_to_snake(Key) ->
@@ -179,10 +229,28 @@ key_snake_to_camel(user_id) ->
     <<"userId">>;
 key_snake_to_camel(session_id) ->
     <<"sessionId">>;
+key_snake_to_camel(verification_id) ->
+    <<"verificationId">>;
+key_snake_to_camel(profile_id) ->
+    <<"profileId">>;
 key_snake_to_camel(sequence_number) ->
     <<"sequenceNumber">>;
 key_snake_to_camel(profile_data) ->
     <<"profileData">>;
+key_snake_to_camel(last_chunk) ->
+    <<"lastChunk">>;
+key_snake_to_camel(chunk_count) ->
+    <<"chunkCount">>;
+key_snake_to_camel(event_count) ->
+    <<"eventCount">>;
+key_snake_to_camel(created_at) ->
+    <<"createddAt">>;
+key_snake_to_camel(succeeded_at) ->
+    <<"succeededAt">>;
+key_snake_to_camel(failed_at) ->
+    <<"faileddAt">>;
+key_snake_to_camel(updated_at) ->
+    <<"updatedAt">>;
 key_snake_to_camel(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom);
 key_snake_to_camel(Key) ->
@@ -207,6 +275,18 @@ null_to_undefined(Value) ->
       Uuid :: binary().
 generate_uuid() ->
     list_to_binary(uuid:to_string(uuid:uuid4())).
+
+-spec add_cors_headers(Request) -> Request when
+      Request :: cowboy_req:req().
+add_cors_headers(Request) ->
+    Headers = [{<<"access-control-allow-headers">>,
+                <<"Origin, X-Requested-With, Content-Type, Accept">>},
+               {<<"access-control-allow-origin">>, <<"*">>}],
+    lists:foldl(fun({K, V}, Req) ->
+                        cowboy_req:set_resp_header(K, V, Req)
+                end,
+                Request,
+                Headers).
 
 %%------------------------------------------------------------------------------
 %% @doc Return the minimum event count needed for profile building.
@@ -262,3 +342,12 @@ evaluation_service_port() ->
     application:get_env(?APPLICATION,
                         evaluation_service_port,
                         ?DEFAULT_EVALUATION_SERVICE_PORT).
+
+%%------------------------------------------------------------------------------
+%% @doc Return the default verification threshold.
+%% @end
+%%------------------------------------------------------------------------------
+-spec default_verification_threshold() -> Threshold when
+      Threshold :: float().
+default_verification_threshold() ->
+    ?DEFAULT_VERIFICATION_THRESHOLD.

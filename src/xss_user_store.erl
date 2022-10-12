@@ -12,6 +12,7 @@
 %%%=============================================================================
 
 -export([select_user_by_user_id/1,
+         select_users/0,
          insert_user/1,
          update_user_event_count/2,
          soft_delete_user_by_user_id/1]).
@@ -38,6 +39,23 @@ select_user_by_user_id(UserId) ->
         {ok, _Columns, [Row | _Rest]} ->
             {ok, parse_db_row(Row)}
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Get all users from the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec select_users() -> Result when
+      Result :: {ok, [xss_user:user()]}.
+select_users() ->
+    case
+      xss_database_server:execute(select_users, [])
+    of
+        {ok, _Columns, []} ->
+            {ok, []};
+        {ok, _Columns, Rows} ->
+            {ok, lists:map(fun parse_db_row/1, Rows)}
+    end.
+
 
 %%------------------------------------------------------------------------------
 %% @doc Insert a new user into the database.

@@ -409,3 +409,11 @@ WHERE (user_id = $1 AND
        deleted_at IS NULL)
 GROUP BY "day"
 ORDER BY "day" DESC
+
+-- :select_event_count_by_stream_id
+SELECT
+  sum(jsonb_array_length(chunk))
+FROM
+  xss.chunks
+WHERE (stream_id = $1 AND
+       deleted_at IS NULL)

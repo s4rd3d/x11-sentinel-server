@@ -14,6 +14,7 @@
 -export([select_chunk_by_stream_id_and_sequence_number/2,
          select_chunks_by_user_id/1,
          select_sequence_numbers_by_stream_id/1,
+         select_event_count_by_stream_id/1,
          insert_chunk/1,
          soft_delete_chunk_by_stream_id_and_sequence_number/2]).
 
@@ -79,6 +80,24 @@ select_sequence_numbers_by_stream_id(StreamId) ->
             {ok, []};
         {ok, _Columns, Rows} ->
             {ok, lists:map(fun ({SequenceNumber}) -> SequenceNumber end, Rows)}
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc Get all chunk sequence numbers from the database which belong to the
+%%      given stream by the `stream_id' field.
+%% @end
+%%------------------------------------------------------------------------------
+-spec select_event_count_by_stream_id(StreamId) -> Result when
+      StreamId :: xss_stream:stream_id(),
+      Result :: {ok, non_neg_integer()}.
+select_event_count_by_stream_id(StreamId) ->
+    case
+      xss_database_server:execute(select_event_count_by_stream_id, [StreamId])
+    of
+        {ok, _Columns, [{null}]} ->
+            {ok, 0};
+        {ok, _Columns, [{Value}]} ->
+            {ok, Value}
     end.
 
 %%------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc Cowboy REST handler for handling status requests sent to
-%%%      `api/[VERSION]/status/:user_id'.
+%%%      `api/[VERSION]/status/:user_id/:stream_id'.
 %%% @end
 %%%-----------------------------------------------------------------------------
 
@@ -117,12 +117,13 @@ valid_entity_length(Request, State) ->
       ResponseBody :: iodata().
 provide_json(Request, State) ->
     UserId = cowboy_req:binding(user_id, Request, undefined),
+    StreamId = cowboy_req:binding(stream_id, Request, undefined),
 
     case
         xss_user_store:select_user_by_user_id(UserId)
     of
         {ok, User} ->
-            Status = get_status(User),
+            Status = get_status(User, StreamId),
             {Status, Request, State};
         {error, #{reason := user_not_found}} ->
             {<<"">>, Request, State}
@@ -136,24 +137,58 @@ provide_json(Request, State) ->
 %% @doc Get the status of the user and return it in JSON.
 %% @end
 %%------------------------------------------------------------------------------
--spec get_status(User) -> Status when
+-spec get_status(User, StreamId) -> Status when
       User :: xss_user:user(),
+      StreamId :: xss_stream:stream_id(),
       Status :: iodata().
-get_status(User) ->
+get_status(User, StreamId1) ->
     UserId = xss_user:get_user_id(User),
+
     case
         xss_verification_store:select_latest_succeeded_verification_by_user_id(UserId)
     of
-        {ok, Verification} ->
+        % The latest stream has at least one verification --> verify
+        {ok, #{stream_id := StreamId2} = Verification} when StreamId1 =:= StreamId2 ->
             Result = xss_verification:get_result(Verification),
             jiffy:encode(#{<<"phase">> => <<"verify">>,
                            <<"description">> => <<"verification phase">>,
                            <<"value">> => Result});
+
+        % The latest stream does not have at least one verification --> transition
+        {ok, _Verification} ->
+            Value = get_transition_value(StreamId1),
+            jiffy:encode(#{<<"phase">> => <<"transition">>,
+                           <<"description">> => <<"transition phase">>,
+                           <<"value">> => Value});
+
+        % The user does not have at least one verification --> learn
         {error, #{reason := verification_not_found}} ->
-            EventCount = xss_user:get_event_count(User),
-            MinimumEventCount = xss_utils:minimum_event_count_for_profile(),
-            Value = min(EventCount / MinimumEventCount, 1),
+            Value = get_learn_value(User),
             jiffy:encode(#{<<"phase">> => <<"learn">>,
                            <<"description">> => <<"learning phase">>,
                            <<"value">> => Value})
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Calculate the value in learning phase.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_learn_value(User) -> Value when
+      User :: xss_user:user(),
+      Value :: float().
+get_learn_value(User) ->
+    EventCount = xss_user:get_event_count(User),
+    MinimumEventCount = xss_utils:minimum_event_count_for_profile(),
+    min(EventCount / MinimumEventCount, 1).
+
+%%------------------------------------------------------------------------------
+%% @doc Calculate the value in transition phase.
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_transition_value(StreamId) -> Value when
+      StreamId :: xss_stream:stream_id(),
+      Value :: float().
+get_transition_value(StreamId) ->
+    {ok, EventCount} = xss_chunk_store:select_event_count_by_stream_id(StreamId),
+    MinimumEventCount = xss_utils:minimum_event_count_for_verification(),
+    min(EventCount / MinimumEventCount, 1).

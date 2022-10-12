@@ -44,7 +44,7 @@
 start(_StartType, _StartArgs) ->
     Port = application:get_env(?APPLICATION, port, ?DEFAULT_PORT),
     Routes = [{"/api/1/s", xss_submission_rest_handler, #{}},
-              {"/api/1/status/:user_id", xss_status_rest_handler, #{}},
+              {"/api/1/status/:user_id/:stream_id", xss_status_rest_handler, #{}},
               {"/api/1/users", xss_users_rest_handler, #{}},
               {"/api/1/users/:user_id", xss_users_rest_handler, #{}},
               {"/api/1/verifications", xss_verifications_rest_handler, #{}},

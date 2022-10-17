@@ -58,6 +58,8 @@ services:
     - EVALUATION_PORT
     # Runtime variables
     - EVALUATION_RESPONSE_DIR
+    - EVALUATION_PROFILE_BUILD_WAIT_TIME
+    - EVALUATION_VERIFY_WAIT_TIME
     networks:
     - x11_sentinel_server
     volumes:

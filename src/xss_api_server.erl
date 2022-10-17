@@ -36,6 +36,8 @@
 %%%=============================================================================
 
 -define(TIMEOUT, 5000). % 5 seconds
+-define(PROFILE_BUILD_TIMEOUT, 300000). % 5 minutes
+-define(VERIFY_TIMEOUT, 60000). % 1 minute
 
 %%%=============================================================================
 %%% Records
@@ -439,8 +441,8 @@ call_build_profile(Chunks) ->
                          "/profile",
                          [{<<"content-type">>, <<"application/json">>}],
                          jiffy:encode(#{chunks => Chunks})),
-    {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef),
-    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef, ?PROFILE_BUILD_TIMEOUT),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef, ?PROFILE_BUILD_TIMEOUT),
     ok = gun:shutdown(ConnPid),
     case
         xss_utils:camel_to_snake(jiffy:decode(Body, [return_maps]))
@@ -502,8 +504,8 @@ do_call_verify(Chunks, Profile) ->
                          "/verify",
                          [{<<"content-type">>, <<"application/json">>}],
                          jiffy:encode(#{chunks => Chunks, profile => Profile})),
-    {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef),
-    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    {response, nofin, 200, _Headers} = gun:await(ConnPid, StreamRef, ?VERIFY_TIMEOUT),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef, ?VERIFY_TIMEOUT),
     ok = gun:shutdown(ConnPid),
     case
         xss_utils:camel_to_snake(jiffy:decode(Body, [return_maps]))

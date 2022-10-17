@@ -157,7 +157,7 @@ do_accept_object(Request1, State) ->
     UserId = xss_chunk:get_user_id(Chunk),
     SessionId = xss_chunk:get_session_id(Chunk),
     StreamId = xss_chunk:get_stream_id(Chunk),
-    ok = maybe_add_user(UserId),
+    ok = xss_utils:maybe_add_user(UserId),
     ok = maybe_add_session(SessionId),
     ok = maybe_add_stream(StreamId, SessionId, UserId),
 
@@ -275,26 +275,6 @@ read_body(Request0, Acc) ->
 parse_body(JsonBody) ->
   Map = jiffy:decode(JsonBody, [return_maps, copy_strings]),
   xss_utils:camel_to_snake(Map).
-
-%%------------------------------------------------------------------------------
-%% @doc Maybe add a new user to the database.
-%% @end
-%%------------------------------------------------------------------------------
--spec maybe_add_user(UserId) -> ok when
-      UserId :: xss_user:user_id().
-maybe_add_user(UserId) ->
-    case
-        xss_user_store:select_user_by_user_id(UserId)
-    of
-        {ok, _User} ->
-          ok;
-        {error, #{reason := user_not_found}} ->
-          ok = logger:info(#{message => <<"Adding new user">>,
-                             user_id => UserId}),
-          User = xss_user:new(#{user_id => UserId}),
-          {ok, _RowsEffected} = xss_user_store:insert_user(User),
-          ok
-    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Increase the event count of a user.

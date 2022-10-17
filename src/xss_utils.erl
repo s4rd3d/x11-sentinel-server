@@ -20,6 +20,7 @@
          null_to_undefined/1,
          generate_uuid/0,
          add_cors_headers/1,
+         maybe_add_user/1,
          minimum_event_count_for_profile/0,
          minimum_event_count_for_verification/0,
          minimum_elapsed_time_for_failed_profile_rebuild/0,
@@ -41,7 +42,7 @@
 -define(DEFAULT_MINIMUM_EVENT_COUNT_FOR_PROFILE, 1000000). % 1_000_000
 
 %% Minimum event count for verification
--define(DEFAULT_MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 720).
+-define(DEFAULT_MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 7200).
 
 %% Minimum time in milliseconds after a failed profile can be rebuilt (1 hour)
 -define(DEFAULT_MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 3600000).
@@ -276,6 +277,10 @@ null_to_undefined(Value) ->
 generate_uuid() ->
     list_to_binary(uuid:to_string(uuid:uuid4())).
 
+%%------------------------------------------------------------------------------
+%% @doc Add CORS headers to a `cowboy_reg:req` object.
+%% @end
+%%------------------------------------------------------------------------------
 -spec add_cors_headers(Request) -> Request when
       Request :: cowboy_req:req().
 add_cors_headers(Request) ->
@@ -287,6 +292,26 @@ add_cors_headers(Request) ->
                 end,
                 Request,
                 Headers).
+
+%%------------------------------------------------------------------------------
+%% @doc Maybe add a new user to the database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec maybe_add_user(UserId) -> ok when
+      UserId :: xss_user:user_id().
+maybe_add_user(UserId) ->
+    case
+        xss_user_store:select_user_by_user_id(UserId)
+    of
+        {ok, _User} ->
+          ok;
+        {error, #{reason := user_not_found}} ->
+          ok = logger:info(#{message => <<"Adding new user">>,
+                             user_id => UserId}),
+          User = xss_user:new(#{user_id => UserId}),
+          {ok, _RowsEffected} = xss_user_store:insert_user(User),
+          ok
+    end.
 
 %%------------------------------------------------------------------------------
 %% @doc Return the minimum event count needed for profile building.

@@ -140,7 +140,13 @@ instructions below:
     $ docker-compose --env-file env.local -f docker-compose.yml build
     ```
 
-2.  Start the containers:
+2.  Create docker network:
+
+    ```
+    $ docker network create x11_sentinel_server
+    ```
+
+3.  Start the containers:
 
     ```
     $ docker-compose --env-file env.local -f docker-compose.yml up -d
@@ -148,13 +154,13 @@ instructions below:
 
     This will create the volumes used by the containers.
 
-3.  Stop the containers:
+4.  Stop the containers:
 
     ```
-    $ docker-compose down
+    $ docker-compose --env-file env.local -f docker-compose.yml down
     ```
 
-4.  Switch to root user (If the Docker server is deployed on a different machine
+5.  Switch to root user (If the Docker server is deployed on a different machine
     from the user's host machine, then login to the machine where the Docker
     server is deployed as root).
 
@@ -167,19 +173,19 @@ instructions below:
         /var/lib/docker/volumes/x11-sentinel-server_evaluation-response-data/_data
     ```
 
-5.  Start the container of the database.
+6.  Start the container of the database.
 
     ```
     $ docker-compose --env-file env.local -f docker-compose.yml up -d db
     ```
 
-6.  Copy the migration scripts to the container of the database.
+7.  Copy the migration scripts to the container of the database.
 
     ```
     $ docker cp priv/migration-scripts/. x11-sentinel-server_db_1:migration-scripts/
     ```
 
-7.  Run the first migration script.
+8.  Run the first migration script.
 
     ```
     $ docker exec -it x11-sentinel-server_db_1 \
@@ -187,7 +193,7 @@ instructions below:
              -f migration-scripts/01_initialize_db_UP.sql
     ```
 
-8.  Run the second migration script on the `xss` database.
+9.  Run the second migration script on the `xss` database.
 
     ```
     $ docker exec -it x11-sentinel-server_db_1 \
@@ -196,13 +202,13 @@ instructions below:
         -f migration-scripts/02_initialize_tables_UP.sql
     ```
 
-9.  Stop the containers:
+10.  Stop the containers:
 
     ```
-    $ docker-compose down
+    $ docker-compose --env-file env.local -f docker-compose.yml down
     ```
 
-10. Copy the mock evaluation service response JSON files to the volume.
+11. Copy the mock evaluation service response JSON files to the volume.
 
     ```
     $ sudo cp -r \
@@ -210,7 +216,7 @@ instructions below:
         /var/lib/docker/volumes/x11-sentinel-server_evaluation-response-data/_data/
     ```
 
-11.  Start the containers:
+12.  Start the containers:
 
     ```
     $ docker-compose --env-file env.local -f docker-compose.yml up -d

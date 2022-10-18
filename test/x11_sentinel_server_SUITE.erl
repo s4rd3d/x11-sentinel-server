@@ -70,7 +70,8 @@ all() ->
      models_query_test,
      chunk_submission_test,
      decide_action_test,
-     status_rest_handler_test].
+     status_rest_handler_test,
+     users_rest_handler_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -672,7 +673,7 @@ status_rest_handler_test(Config) ->
     % 3.  Send a chunks to the server so that the event count does not exceed
     %     the value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
     EventCount1 = ?MINIMUM_EVENT_COUNT_FOR_PROFILE div 2,
-    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount1)),
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount1, #{})),
 
     % 4.  Send a request to the status REST handler and check the result.
     %     It should be `{"phase": "learn", "value": Value}' where `Value' is
@@ -684,7 +685,7 @@ status_rest_handler_test(Config) ->
     % 5.  Send a chunk to the server so that the event count exceeds the
     %     value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
     EventCount2 = ?MINIMUM_EVENT_COUNT_FOR_PROFILE,
-    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount2)),
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount2, #{})),
 
     % 6.  Wait for the profile building.
     ok = wait_until(
@@ -711,7 +712,7 @@ status_rest_handler_test(Config) ->
     % 8.  Send a chunk to the server so that the event count exceeds the value
     %     of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
     EventCount3 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION,
-    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount3)),
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount3, #{})),
 
     % 9.  Wait for the profile verification.
     ok = wait_until(
@@ -743,7 +744,9 @@ status_rest_handler_test(Config) ->
     %     ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
     NewStreamId = <<"new-stream-id">>,
     EventCount4 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION div 2,
-    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount4, NewStreamId)),
+    ok = do_submit_chunk(do_create_new_chunk(Counter,
+                                             EventCount4,
+                                             #{stream_id => NewStreamId})),
 
     %% 12. Send a request to the status REST handler and check the result.
     %%     It should be `{"phase": "transition", "value": Value}' where `Value'
@@ -756,7 +759,9 @@ status_rest_handler_test(Config) ->
     %     count exceeds the value of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION
     %     macro.
     EventCount5 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION,
-    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount5, NewStreamId)),
+    ok = do_submit_chunk(do_create_new_chunk(Counter,
+                                             EventCount5,
+                                             #{stream_id => NewStreamId})),
 
     % 14. Wait for the profile verification.
     ok = wait_until(
@@ -784,6 +789,91 @@ status_rest_handler_test(Config) ->
                  do_call_status(?DEFAULT_USER_ID, NewStreamId)),
     ok.
 
+%%------------------------------------------------------------------------------
+%% @doc Test the users REST handler.
+%% @end
+%%------------------------------------------------------------------------------
+-spec users_rest_handler_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+users_rest_handler_test(_Config) ->
+    % Add entities to the database
+    lists:foreach(
+        fun(N) ->
+          UserId = <<"user", N/binary, "@test.com">>,
+          SessionId = <<"session-", N/binary>>,
+          StreamId = <<"stream-", N/binary>>,
+          ProfileId = <<"profile-", N/binary>>,
+          User = xss_user:new(#{user_id => UserId}),
+          Session = xss_session:new(#{session_id => SessionId}),
+          Stream = xss_stream:new(#{stream_id => StreamId, session_id => SessionId}),
+          Profile = xss_profile:new(#{profile_id => ProfileId, user_id => UserId}),
+          ?assertMatch({ok, 1}, xss_user_store:insert_user(User)),
+          ?assertMatch({ok, 1}, xss_session_store:insert_session(Session)),
+          ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream)),
+          ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile)),
+          ?assertMatch({ok, 1}, xss_user_store:update_user_event_count(User, list_to_integer(binary_to_list(N))))
+        end,
+        [<<"1">>, <<"2">>, <<"3">>]),
+    ?assertMatch(ok,insert_new_verification_to_db(#{profile_id => <<"profile-1">>,
+                                                     stream_id => <<"stream-1">>,
+                                                     result => 0.1})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-1">>,
+                                                     stream_id => <<"stream-1">>,
+                                                     result => 0.2})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.3})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.4})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.5})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.6})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.7})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.8})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-3">>,
+                                                     stream_id => <<"stream-3">>,
+                                                     result => 0.9})),
+
+    % Check the result of the "GET api/1/users?threshold=0.42" request
+    %
+    % * user1 should have 2 incidents
+    % * user2 should have 2 incidents
+    % * user3 should have 0 incidents
+    ?assertMatch(#{<<"result">> := <<"ok">>,
+                   <<"users">> := [#{<<"userId">> := <<"user1@test.com">>,
+                                     <<"eventCount">> := 1,
+                                     <<"verifications">> := 2,
+                                     <<"incidents">> := 2},
+                                   #{<<"userId">> := <<"user2@test.com">>,
+                                     <<"eventCount">> := 2,
+                                     <<"verifications">> := 6,
+                                     <<"incidents">> := 2},
+                                   #{<<"userId">> := <<"user3@test.com">>,
+                                     <<"eventCount">> := 3,
+                                     <<"verifications">> := 1,
+                                     <<"incidents">> := 0}]},
+                 do_call_users(<<"0.42">>)),
+
+    % Check the result of the "GET api/1/users/user2@test.com?threshold=0.75"
+    % request. User2 should have 6 verifications and 5 incidents.
+    ?assertMatch(#{<<"result">> := <<"ok">>,
+                   <<"user">> := #{<<"userId">> := <<"user2@test.com">>,
+                                   <<"eventCount">> := 2,
+                                   <<"verifications">> := 6,
+                                   <<"incidents">> := 5}},
+                 do_call_user(<<"user2@test.com">>, <<"0.75">>)),
+
+    ok.
+
+
 %%%=============================================================================
 %%% Helper functions
 %%%=============================================================================
@@ -806,39 +896,20 @@ do_create_new_chunk(Counter) ->
     xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
 
 %%------------------------------------------------------------------------------
-%% @doc Create a new chunk with given event count and sequence number.
+%% @doc Create a new chunk.
 %% @end
 %%------------------------------------------------------------------------------
--spec do_create_new_chunk(Counter, EventCount) -> Chunk when
+-spec do_create_new_chunk(Counter, EventCount, Config) -> Chunk when
       Counter :: counters:counters_ref(),
       EventCount :: non_neg_integer(),
+      Config :: map(),
       Chunk :: xss_chunk:chunk().
-do_create_new_chunk(Counter, EventCount) ->
+do_create_new_chunk(Counter, EventCount, Config) ->
   LooseChunk = #{chunk => lists:seq(1, EventCount),
                  metadata =>
-                   #{user_id => ?DEFAULT_USER_ID,
-                     session_id => ?DEFAULT_SESSION_ID,
-                     stream_id => ?DEFAULT_STREAM_ID,
-                     sequence_number => get_next_sequnce_number(Counter),
-                     epoch => #{unit => milisecond, value => 0}}},
-  xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
-
-%%------------------------------------------------------------------------------
-%% @doc Create a new chunk with given event count, stream ID and sequence
-%%      number.
-%% @end
-%%------------------------------------------------------------------------------
--spec do_create_new_chunk(Counter, EventCount, StreamId) -> Chunk when
-      Counter :: counters:counters_ref(),
-      EventCount :: non_neg_integer(),
-      StreamId :: xss_stream:stream_id(),
-      Chunk :: xss_chunk:chunk().
-do_create_new_chunk(Counter, EventCount, StreamId) ->
-  LooseChunk = #{chunk => lists:seq(1, EventCount),
-                 metadata =>
-                   #{user_id => ?DEFAULT_USER_ID,
-                     session_id => ?DEFAULT_SESSION_ID,
-                     stream_id => StreamId,
+                   #{user_id => maps:get(user_id, Config, ?DEFAULT_USER_ID),
+                     session_id => maps:get(session_id, Config, ?DEFAULT_SESSION_ID),
+                     stream_id => maps:get(stream_id, Config, ?DEFAULT_STREAM_ID),
                      sequence_number => get_next_sequnce_number(Counter),
                      epoch => #{unit => milisecond, value => 0}}},
   xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
@@ -886,6 +957,47 @@ do_call_status(UserId, StreamId) ->
     ok = gun:shutdown(ConnPid),
     jiffy:decode(Body, [return_maps]).
 
+%%------------------------------------------------------------------------------
+%% @doc Call the users endpoint with a given threshold and return the parsed
+%%      result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_users(Threshold) -> Response when
+      Threshold :: binary(),
+      Response :: #{binary() => binary() | float()}.
+do_call_users(Threshold) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/users?threshold=", Threshold/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+%%------------------------------------------------------------------------------
+%% @doc Call the users endpoint with a given user ID and a threshold and return
+%%      the parsed result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_user(UserId, Threshold) -> Response when
+      UserId :: xss_user:user_id(),
+      Threshold :: binary(),
+      Response :: #{binary() => binary() | float()}.
+do_call_user(UserId, Threshold) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/users/",
+                                   UserId/binary,
+                                   "?threshold=",
+                                   Threshold/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
 
 %%------------------------------------------------------------------------------
 %% @doc Read the counter, then increment it's value by 1.
@@ -937,3 +1049,23 @@ do_wait_until(Function, SleepPeriod, WaitTimeout, StartTime) ->
         false ->
             timeout
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Insert a verification to the db and update it's result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec insert_new_verification_to_db(map()) -> ok.
+insert_new_verification_to_db(Config) ->
+  VerificationId = maps:get(verification_id, Config, xss_utils:generate_uuid()),
+  Result = maps:get(result, Config, ?VERIFICATION_RESULT),
+  Verification = xss_verification:new(#{
+      verification_id => VerificationId,
+      profile_id => maps:get(profile_id, Config, xss_utils:generate_uuid()),
+      stream_id => maps:get(stream_id, Config, xss_utils:generate_uuid()),
+      last_chunk => 0,
+      chunk_count => 0}),
+  ?assertMatch({ok, 1}, xss_verification_store:insert_verification(Verification)),
+  ?assertMatch({ok, 1},
+               xss_verification_store:update_verification_success(VerificationId,
+                                                                  Result)),
+  ok.

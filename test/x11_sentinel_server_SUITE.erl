@@ -34,11 +34,11 @@
 
 %% Default model identifiers and data
 -define(DEFAULT_USER_ID, <<"user@test">>).
--define(DEFAULT_SESSION_ID, <<"default session">>).
--define(DEFAULT_STREAM_ID, <<"default stream">>).
--define(DEFAULT_PROFILE_ID, <<"default profile">>).
--define(DEFAULT_PROFILE_DATA, <<"default profile data">>).
--define(DEFAULT_VERIFICATION_ID, <<"default verification">>).
+-define(DEFAULT_SESSION_ID, <<"default-session">>).
+-define(DEFAULT_STREAM_ID, <<"default-stream">>).
+-define(DEFAULT_PROFILE_ID, <<"default-profile">>).
+-define(DEFAULT_PROFILE_DATA, <<"default-profile-data">>).
+-define(DEFAULT_VERIFICATION_ID, <<"default-verification">>).
 
 %% Applications defaults
 -define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1000).
@@ -645,7 +645,7 @@ status_rest_handler_test(Config) ->
     % 2.  Send a request to the status REST handler and check the result.
     %     It should be `{"phase": "learn", "value": 0.0}'
     ?assertMatch(#{<<"phase">> := <<"learn">>, <<"value">> := 0.0},
-                 do_call_status(?DEFAULT_USER_ID)),
+                 do_call_status(?DEFAULT_USER_ID, ?DEFAULT_STREAM_ID)),
 
     % 3.  Send a chunks to the server so that the event count does not exceed
     %     the value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
@@ -657,7 +657,7 @@ status_rest_handler_test(Config) ->
     %     between 0.0 and 1.0.
     ?assertMatch(#{<<"phase">> := <<"learn">>,
                    <<"value">> := Value} when Value > 0.0 andalso Value < 1.0,
-                 do_call_status(?DEFAULT_USER_ID)),
+                 do_call_status(?DEFAULT_USER_ID, ?DEFAULT_STREAM_ID)),
 
     % 5.  Send a chunk to the server so that the event count exceeds the
     %     value of the ?MINIMUM_EVENT_COUNT_FOR_PROFILE macro.
@@ -684,7 +684,7 @@ status_rest_handler_test(Config) ->
     % 7.  Send a request to the status REST handler and check the result.
     %     It should be `{"phase": "learn", "value": 1}'.
     ?assertMatch(#{<<"phase">> := <<"learn">>, <<"value">> := 1},
-                 do_call_status(?DEFAULT_USER_ID)),
+                 do_call_status(?DEFAULT_USER_ID, ?DEFAULT_STREAM_ID)),
 
     % 8.  Send a chunk to the server so that the event count exceeds the value
     %     of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
@@ -714,7 +714,7 @@ status_rest_handler_test(Config) ->
     %     should math the value of the ?VERIFICATION_RESULT macro.
     ?assertMatch(#{<<"phase">> := <<"verify">>,
                    <<"value">> := ?VERIFICATION_RESULT},
-                 do_call_status(?DEFAULT_USER_ID)),
+                 do_call_status(?DEFAULT_USER_ID, ?DEFAULT_STREAM_ID)),
 
     ok.
 
@@ -784,14 +784,16 @@ do_submit_chunk(Chunk) ->
 %%      result.
 %% @end
 %%------------------------------------------------------------------------------
--spec do_call_status(UserId) -> Response when
+-spec do_call_status(UserId, StreamId) -> Response when
       UserId :: xss_user:user_id(),
+      StreamId :: xss_stream:stream_id(),
       Response :: #{binary() => binary() | float()}.
-do_call_status(UserId) ->
+do_call_status(UserId, StreamId) ->
     {ok, ConnPid} = gun:open(
                         ?DEFAULT_HOST,
                         application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
-    StreamRef = gun:get(ConnPid, <<"/api/1/status/", UserId/binary>>),
+    StreamRef = gun:get(ConnPid,
+                        <<"/api/1/status/", UserId/binary, "/",  StreamId/binary>>),
     ?assertMatch({response, nofin, 200, _Headers},
                   gun:await(ConnPid, StreamRef)),
     {ok, Body} = gun:await_body(ConnPid, StreamRef),

@@ -42,7 +42,7 @@
 
 %% Applications defaults
 -define(MINIMUM_EVENT_COUNT_FOR_PROFILE, 1000).
--define(MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 1).
+-define(MINIMUM_EVENT_COUNT_FOR_VERIFICATION, 10).
 -define(MINIMUM_ELAPSED_TIME_FOR_FAILED_PROFILE_REBUILD, 2000000). % 2 seconds
 -define(EVALUATION_SERVICE_HOST, "localhost").
 -define(EVALUATION_SERVICE_PORT, 8081).
@@ -146,11 +146,14 @@ init_per_testcase(status_rest_handler_test, _Config) ->
                   ({build_profile, #{profile_id := ProfileId}}, State) ->
                       {ok, 1} = xss_profile_store:update_profile_success(ProfileId, <<>>),
                       {noreply, State};
-                  ({verify, #{profile_id := ProfileId}}, State) ->
-                      VerificationId = ?DEFAULT_VERIFICATION_ID,
+                  ({verify, #{profile_id := ProfileId,
+                              user_id := UserId}}, State) ->
+                      {ok, Stream} = xss_stream_store:select_latest_stream_by_user_id(UserId),
+                      StreamId = xss_stream:get_stream_id(Stream),
+                      VerificationId = xss_utils:generate_uuid(),
                       Verification = xss_verification:new(#{verification_id => VerificationId,
                                                             profile_id => ProfileId,
-                                                            stream_id => ?DEFAULT_STREAM_ID,
+                                                            stream_id => StreamId,
                                                             last_chunk => 0,
                                                             chunk_count => 0}),
                       {ok, 1} = xss_verification_store:insert_verification(Verification),
@@ -631,6 +634,25 @@ decide_action_test(Config) ->
 %%          It should be `{"phase": "verify", "value": Value}' where `Value'
 %%          should math the value of the ?VERIFICATION_RESULT macro.
 %%
+%%      11. Send a chunk to server with a new stream ID so that the event count
+%%          does not exceed the value of the
+%%          ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
+%%
+%%      12. Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "transition", "value": Value}' where `Value'
+%%          is between 0.0 and 1.0.
+%%
+%%      13. Send a chunk to the server with the new stream ID so that the event
+%%          count exceeds the value of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION
+%%          macro.
+%%
+%%      14.  Wait for the profile verification.
+%%
+%%      15. Send a request to the status REST handler and check the result.
+%%          It should be `{"phase": "verify", "value": Value}' where `Value'
+%%          should math the value of the ?VERIFICATION_RESULT macro.
+%%
+%%
 %% @end
 %%------------------------------------------------------------------------------
 -spec status_rest_handler_test(Config) -> ok when
@@ -716,6 +738,50 @@ status_rest_handler_test(Config) ->
                    <<"value">> := ?VERIFICATION_RESULT},
                  do_call_status(?DEFAULT_USER_ID, ?DEFAULT_STREAM_ID)),
 
+    % 11. Send a chunk to server with a new stream ID so that the event count
+    %     does not exceed the value of the
+    %     ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION macro.
+    NewStreamId = <<"new-stream-id">>,
+    EventCount4 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION div 2,
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount4, NewStreamId)),
+
+    %% 12. Send a request to the status REST handler and check the result.
+    %%     It should be `{"phase": "transition", "value": Value}' where `Value'
+    %%     is between 0.0 and 1.0.
+    ?assertMatch(#{<<"phase">> := <<"transition">>,
+                   <<"value">> := Value} when Value > 0.0 andalso Value < 1.0,
+                 do_call_status(?DEFAULT_USER_ID, NewStreamId)),
+
+    % 13. Send a chunk to the server with the new stream ID so that the event
+    %     count exceeds the value of the ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION
+    %     macro.
+    EventCount5 = ?MINIMUM_EVENT_COUNT_FOR_VERIFICATION,
+    ok = do_submit_chunk(do_create_new_chunk(Counter, EventCount5, NewStreamId)),
+
+    % 14. Wait for the profile verification.
+    ok = wait_until(
+      fun() ->
+          Result =
+            xss_verification_store:select_latest_succeeded_verification_by_user_id(?DEFAULT_USER_ID),
+          case
+              Result
+          of
+            {ok, #{stream_id := StreamId} = _Verification} ->
+                StreamId =:= NewStreamId;
+            {error, _Reason} ->
+                false
+          end
+
+      end,
+      ?SLEEP_PERIOD,
+      ?WAIT_TIMEOUT),
+
+    % 15. Send a request to the status REST handler and check the result.
+    %     It should be `{"phase": "verify", "value": Value}' where `Value'
+    %     should math the value of the ?VERIFICATION_RESULT macro.
+    ?assertMatch(#{<<"phase">> := <<"verify">>,
+                   <<"value">> := ?VERIFICATION_RESULT},
+                 do_call_status(?DEFAULT_USER_ID, NewStreamId)),
     ok.
 
 %%%=============================================================================
@@ -753,6 +819,26 @@ do_create_new_chunk(Counter, EventCount) ->
                    #{user_id => ?DEFAULT_USER_ID,
                      session_id => ?DEFAULT_SESSION_ID,
                      stream_id => ?DEFAULT_STREAM_ID,
+                     sequence_number => get_next_sequnce_number(Counter),
+                     epoch => #{unit => milisecond, value => 0}}},
+  xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
+
+%%------------------------------------------------------------------------------
+%% @doc Create a new chunk with given event count, stream ID and sequence
+%%      number.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_create_new_chunk(Counter, EventCount, StreamId) -> Chunk when
+      Counter :: counters:counters_ref(),
+      EventCount :: non_neg_integer(),
+      StreamId :: xss_stream:stream_id(),
+      Chunk :: xss_chunk:chunk().
+do_create_new_chunk(Counter, EventCount, StreamId) ->
+  LooseChunk = #{chunk => lists:seq(1, EventCount),
+                 metadata =>
+                   #{user_id => ?DEFAULT_USER_ID,
+                     session_id => ?DEFAULT_SESSION_ID,
+                     stream_id => StreamId,
                      sequence_number => get_next_sequnce_number(Counter),
                      epoch => #{unit => milisecond, value => 0}}},
   xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).

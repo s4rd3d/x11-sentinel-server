@@ -71,7 +71,10 @@ all() ->
      chunk_submission_test,
      decide_action_test,
      status_rest_handler_test,
-     users_rest_handler_test].
+     users_rest_handler_test,
+     events_rest_handler_test,
+     verifications_rest_handler_test,
+     state_rest_handler_test].
 
 %%%-----------------------------------------------------------------------------
 %%% Test suite init/end
@@ -796,24 +799,7 @@ status_rest_handler_test(Config) ->
 -spec users_rest_handler_test(Config) -> ok when
       Config :: ct_suite:ct_config().
 users_rest_handler_test(_Config) ->
-    % Add entities to the database
-    lists:foreach(
-        fun(N) ->
-          UserId = <<"user", N/binary, "@test.com">>,
-          SessionId = <<"session-", N/binary>>,
-          StreamId = <<"stream-", N/binary>>,
-          ProfileId = <<"profile-", N/binary>>,
-          User = xss_user:new(#{user_id => UserId}),
-          Session = xss_session:new(#{session_id => SessionId}),
-          Stream = xss_stream:new(#{stream_id => StreamId, session_id => SessionId}),
-          Profile = xss_profile:new(#{profile_id => ProfileId, user_id => UserId}),
-          ?assertMatch({ok, 1}, xss_user_store:insert_user(User)),
-          ?assertMatch({ok, 1}, xss_session_store:insert_session(Session)),
-          ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream)),
-          ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile)),
-          ?assertMatch({ok, 1}, xss_user_store:update_user_event_count(User, list_to_integer(binary_to_list(N))))
-        end,
-        [<<"1">>, <<"2">>, <<"3">>]),
+    ok = insert_entities_to_db(3),
     ?assertMatch(ok,insert_new_verification_to_db(#{profile_id => <<"profile-1">>,
                                                      stream_id => <<"stream-1">>,
                                                      result => 0.1})),
@@ -873,6 +859,203 @@ users_rest_handler_test(_Config) ->
 
     ok.
 
+%%------------------------------------------------------------------------------
+%% @doc Test the events REST handler.
+%% @end
+%%------------------------------------------------------------------------------
+-spec events_rest_handler_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+events_rest_handler_test(Config) ->
+    % Get counter reference from test configuration.
+    Counter = ?config(counter, Config),
+
+    % Insert 3 users with sessions, streams and profiles to the database.
+    insert_entities_to_db(3),
+
+    % Insert a chunk for User1 to the database.
+    Chunk1 = do_create_new_chunk(Counter,
+                                 42,
+                                 #{user_id => <<"user1@test.com">>,
+                                   session_id => <<"session-1">>,
+                                   stream_id => <<"stream-1">>},
+                                 {{2022, 01, 01}, {0, 0, 0.0}}),
+    ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk1)),
+
+    % Check the results of the "GET api1/1/events/user1@test.com" request.
+    % User1 should have events registered only to 2022-01-01 with the event
+    % count of 42.
+    ?assertMatch(#{<<"events">> := [#{<<"date">> := <<"2022-01-01T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 42}]},
+                 do_call_events(<<"user1@test.com">>)),
+
+    % Insert an other chunk for User1 for the same date into the database.
+    Chunk2 = do_create_new_chunk(Counter,
+                                 982,
+                                 #{user_id => <<"user1@test.com">>,
+                                   session_id => <<"session-1">>,
+                                   stream_id => <<"stream-1">>},
+                                 {{2022, 01, 01}, {0, 0, 0.0}}),
+    ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk2)),
+
+    % Check the results of the "GET api1/1/events/user1@test.com" request.
+    % User1 should have events registered only to 2022-01-01 with the event
+    % count of 42 + 982 = 1024.
+    ?assertMatch(#{<<"events">> := [#{<<"date">> := <<"2022-01-01T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024}]},
+                 do_call_events(<<"user1@test.com">>)),
+
+    % Insert chunks for User1 for other dates into the database.
+    lists:foreach(
+        fun (N) ->
+            Chunk = do_create_new_chunk(Counter,
+                                        256,
+                                        #{user_id => <<"user1@test.com">>,
+                                          session_id => <<"session-1">>,
+                                          stream_id => <<"stream-1">>},
+                                        {{2022, 01, N}, {0, 0, 0.0}}),
+            ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk))
+        end,
+        lists:seq(2, 5)),
+
+    % Check the results of the "GET api1/1/events/user1@test.com" request.
+    % User1 should have events registered between 2022-01-01 - 2022-01-05 with
+    % the event counts of 1024, 256, 256, 256, 256.
+    ?assertMatch(#{<<"events">> := [#{<<"date">> := <<"2022-01-05T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 256},
+                                    #{<<"date">> := <<"2022-01-04T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 256},
+                                    #{<<"date">> := <<"2022-01-03T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 256},
+                                    #{<<"date">> := <<"2022-01-02T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 256},
+                                    #{<<"date">> := <<"2022-01-01T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024}]},
+                 do_call_events(<<"user1@test.com">>)),
+
+    % Insert chunks for User2 on 2022-01-02 and 2022-01-3 into the database.
+    lists:foreach(
+        fun (N) ->
+            Chunk = do_create_new_chunk(Counter,
+                                        768,
+                                        #{user_id => <<"user2@test.com">>,
+                                          session_id => <<"session-2">>,
+                                          stream_id => <<"stream-2">>},
+                                        {{2022, 01, N}, {0, 0, 0.0}}),
+            ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk))
+        end,
+        lists:seq(2, 3)),
+
+    % Insert chunks for User3 on 2022-01-04 and 2022-01-5 into the database.
+    lists:foreach(
+        fun (N) ->
+            Chunk = do_create_new_chunk(Counter,
+                                        768,
+                                        #{user_id => <<"user2@test.com">>,
+                                          session_id => <<"session-2">>,
+                                          stream_id => <<"stream-2">>},
+                                        {{2022, 01, N}, {0, 0, 0.0}}),
+            ?assertMatch({ok, 1}, xss_chunk_store:insert_chunk(Chunk))
+        end,
+        lists:seq(4, 5)),
+
+    % Check the results of the "GET api1/1/events" request.
+    % There should be events registered between 2022-01-01 - 2022-01-05.
+    % The event count on every day should be 1024.
+    ?assertMatch(#{<<"events">> := [#{<<"date">> := <<"2022-01-05T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024},
+                                    #{<<"date">> := <<"2022-01-04T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024},
+                                    #{<<"date">> := <<"2022-01-03T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024},
+                                    #{<<"date">> := <<"2022-01-02T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024},
+                                    #{<<"date">> := <<"2022-01-01T00:00:00.000000Z">>,
+                                      <<"eventCount">> := 1024}]},
+                 do_call_events()),
+    ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Test the verifications REST handler.
+%% @end
+%%------------------------------------------------------------------------------
+-spec verifications_rest_handler_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+verifications_rest_handler_test(_Config) ->
+    ok = insert_entities_to_db(3),
+    ?assertMatch(ok,insert_new_verification_to_db(#{profile_id => <<"profile-1">>,
+                                                     stream_id => <<"stream-1">>,
+                                                     result => 0.1})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-1">>,
+                                                     stream_id => <<"stream-1">>,
+                                                     result => 0.2})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.3})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.4})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.5})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.6})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.7})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-2">>,
+                                                     stream_id => <<"stream-2">>,
+                                                     result => 0.8})),
+    ?assertMatch(ok, insert_new_verification_to_db(#{profile_id => <<"profile-3">>,
+                                                     stream_id => <<"stream-3">>,
+                                                     result => 0.9})),
+
+    % Check the result of the "GET api/1/verifications?threshold=0.42" request
+    % There should be 2 incidents registered for User1 and 2 for User2.
+    ?assertMatch(#{<<"result">> := <<"ok">>,
+                   <<"verifications">> := [#{<<"userId">> := <<"user1@test.com">>,
+                                             <<"result">> := 0.1},
+                                           #{<<"userId">> := <<"user1@test.com">>,
+                                             <<"result">> := 0.2},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.3},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.4}]},
+                 do_call_verifications(<<"0.42">>)),
+
+    % Check the result of the "GET api/1/verifications/user2@test.com?threshold=0.75"
+    % request. User2 should have 5 incidents.
+    ?assertMatch(#{<<"result">> := <<"ok">>,
+                   <<"verifications">> := [#{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.3},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.4},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.5},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.6},
+                                           #{<<"userId">> := <<"user2@test.com">>,
+                                             <<"result">> := 0.7}]},
+                 do_call_verifications(<<"user2@test.com">>, <<"0.75">>)),
+    ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Test the state REST handler.
+%% @end
+%%------------------------------------------------------------------------------
+-spec state_rest_handler_test(Config) -> ok when
+      Config :: ct_suite:ct_config().
+state_rest_handler_test(_Config) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/state/">>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    ?assertMatch(#{<<"result">> := <<"ok">>}, jiffy:decode(Body, [return_maps])),
+    ok.
 
 %%%=============================================================================
 %%% Helper functions
@@ -894,6 +1077,22 @@ do_create_new_chunk(Counter) ->
                        sequence_number => get_next_sequnce_number(Counter),
                        epoch => #{unit => milisecond, value => 0}}},
     xss_chunk:new(LooseChunk, {127, 0, 0, 1}, {127, 0, 0, 1}, <<"localhost">>).
+
+%%------------------------------------------------------------------------------
+%% @doc Create a new chunk.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_create_new_chunk(Counter, EventCount, Config, SubmittedAt) -> Chunk when
+      Counter :: counters:counters_ref(),
+      EventCount :: non_neg_integer(),
+      Config :: map(),
+      SubmittedAt :: xss_utils:epgsql_timestamp(),
+      Chunk :: xss_chunk:chunk().
+do_create_new_chunk(Counter, EventCount, Config, SubmittedAt) ->
+    Chunk = do_create_new_chunk(Counter, EventCount, Config),
+    maps:update(submitted_at,
+                xss_utils:epgsql_timestamp_to_xss_timestamp(SubmittedAt),
+                Chunk).
 
 %%------------------------------------------------------------------------------
 %% @doc Create a new chunk.
@@ -1000,6 +1199,87 @@ do_call_user(UserId, Threshold) ->
     jiffy:decode(Body, [return_maps]).
 
 %%------------------------------------------------------------------------------
+%% @doc Call the events endpoint and return the parsed result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_events() -> Response when
+      Response :: #{binary() => binary() | float()}.
+do_call_events() ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/events">>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+%%------------------------------------------------------------------------------
+%% @doc Call the events endpoint with a given user ID and return the parsed
+%%      result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_events(UserId) -> Response when
+      UserId :: xss_user:user_id(),
+      Response :: #{binary() => binary() | float()}.
+do_call_events(UserId) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/events/",
+                                   UserId/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+%%------------------------------------------------------------------------------
+%% @doc Call the verifications endpoint with a given threshold and return the
+%%      parsed result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_verifications(Threshold) -> Response when
+      Threshold :: binary(),
+      Response :: #{binary() => binary() | float()}.
+do_call_verifications(Threshold) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/verifications",
+                                   "?threshold=",
+                                   Threshold/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+%%------------------------------------------------------------------------------
+%% @doc Call the verifications endpoint with a given threshold and a user ID and
+%%      return the parsed result.
+%% @end
+%%------------------------------------------------------------------------------
+-spec do_call_verifications(UserId, Threshold) -> Response when
+      UserId :: xss_user:user_id(),
+      Threshold :: binary(),
+      Response :: #{binary() => binary() | float()}.
+do_call_verifications(UserId, Threshold) ->
+    {ok, ConnPid} = gun:open(
+                        ?DEFAULT_HOST,
+                        application:get_env(?APPLICATION, port, ?DEFAULT_PORT)),
+    StreamRef = gun:get(ConnPid, <<"/api/1/verifications/",
+                                   UserId/binary,
+                                   "?threshold=",
+                                   Threshold/binary>>),
+    ?assertMatch({response, nofin, 200, _Headers},
+                  gun:await(ConnPid, StreamRef)),
+    {ok, Body} = gun:await_body(ConnPid, StreamRef),
+    ok = gun:shutdown(ConnPid),
+    jiffy:decode(Body, [return_maps]).
+
+%%------------------------------------------------------------------------------
 %% @doc Read the counter, then increment it's value by 1.
 %% @end
 %%------------------------------------------------------------------------------
@@ -1069,3 +1349,29 @@ insert_new_verification_to_db(Config) ->
                xss_verification_store:update_verification_success(VerificationId,
                                                                   Result)),
   ok.
+
+%%------------------------------------------------------------------------------
+%% @doc Insert a number of users with a session, a stream and a profile to the
+%%      database.
+%% @end
+%%------------------------------------------------------------------------------
+-spec insert_entities_to_db(Number) -> ok when
+      Number :: pos_integer().
+insert_entities_to_db(Number) ->
+    lists:foreach(
+        fun(N) ->
+          UserId = <<"user", N/binary, "@test.com">>,
+          SessionId = <<"session-", N/binary>>,
+          StreamId = <<"stream-", N/binary>>,
+          ProfileId = <<"profile-", N/binary>>,
+          User = xss_user:new(#{user_id => UserId}),
+          Session = xss_session:new(#{session_id => SessionId}),
+          Stream = xss_stream:new(#{stream_id => StreamId, session_id => SessionId}),
+          Profile = xss_profile:new(#{profile_id => ProfileId, user_id => UserId}),
+          ?assertMatch({ok, 1}, xss_user_store:insert_user(User)),
+          ?assertMatch({ok, 1}, xss_session_store:insert_session(Session)),
+          ?assertMatch({ok, 1}, xss_stream_store:insert_stream(Stream)),
+          ?assertMatch({ok, 1}, xss_profile_store:insert_profile(Profile)),
+          ?assertMatch({ok, 1}, xss_user_store:update_user_event_count(User, list_to_integer(binary_to_list(N))))
+        end,
+        lists:map(fun(X) -> list_to_binary(integer_to_list(X)) end, lists:seq(1, Number))).

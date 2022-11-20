@@ -188,11 +188,11 @@ key_camel_to_snake(<<"chunkCount">>) ->
     chunk_count;
 key_camel_to_snake(<<"eventCount">>) ->
     event_count;
-key_camel_to_snake(<<"createddAt">>) ->
+key_camel_to_snake(<<"createdAt">>) ->
     created_at;
 key_camel_to_snake(<<"succeededAt">>) ->
     succeeded_at;
-key_camel_to_snake(<<"faileddAt">>) ->
+key_camel_to_snake(<<"failedAt">>) ->
     failed_at;
 key_camel_to_snake(<<"updatedAt">>) ->
     updated_at;
@@ -245,11 +245,11 @@ key_snake_to_camel(chunk_count) ->
 key_snake_to_camel(event_count) ->
     <<"eventCount">>;
 key_snake_to_camel(created_at) ->
-    <<"createddAt">>;
+    <<"createdAt">>;
 key_snake_to_camel(succeeded_at) ->
     <<"succeededAt">>;
 key_snake_to_camel(failed_at) ->
-    <<"faileddAt">>;
+    <<"failedAt">>;
 key_snake_to_camel(updated_at) ->
     <<"updatedAt">>;
 key_snake_to_camel(Atom) when is_atom(Atom) ->
@@ -376,3 +376,76 @@ evaluation_service_port() ->
       Threshold :: float().
 default_verification_threshold() ->
     ?DEFAULT_VERIFICATION_THRESHOLD.
+
+%%%=============================================================================
+%%% EUnit tests
+%%%=============================================================================
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+camel_to_snake_test() ->
+    Map = #{<<"streamId">> => <<"streamId">>,
+            <<"userId">> => <<"userId">>,
+            <<"sessionId">> => <<"sessionId">>,
+            <<"verificationId">> => <<"verificationId">>,
+            <<"profileId">> => <<"profileId">>,
+            <<"sequenceNumber">> => 42,
+            <<"profileData">> => <<>>,
+            <<"lastChunk">> => 10,
+            <<"chunkCount">> => 5,
+            <<"eventCount">> => 1024,
+            <<"createdAt">> => 1234567890,
+            <<"succeededAt">> => 1234567890,
+            <<"failedAt">> => undefined,
+            <<"updatedAt">> => 1234567890},
+
+    ?assertMatch(#{stream_id := <<"streamId">>,
+                   user_id := <<"userId">>,
+                   session_id := <<"sessionId">>,
+                   verification_id := <<"verificationId">>,
+                   profile_id := <<"profileId">>,
+                   sequence_number := 42,
+                   profile_data := <<>>,
+                   last_chunk := 10,
+                   chunk_count := 5,
+                   event_count := 1024,
+                   created_at := 1234567890,
+                   succeeded_at := 1234567890,
+                   failed_at := undefined,
+                   updated_at := 1234567890},
+                 camel_to_snake(Map)),
+    ok.
+
+snake_to_camel_test() ->
+    Map = #{<<"streamId">> => <<"streamId">>,
+            <<"userId">> => <<"userId">>,
+            <<"sessionId">> => <<"sessionId">>,
+            <<"verificationId">> => <<"verificationId">>,
+            <<"profileId">> => <<"profileId">>,
+            <<"sequenceNumber">> => 42,
+            <<"profileData">> => <<>>,
+            <<"lastChunk">> => 10,
+            <<"chunkCount">> => 5,
+            <<"eventCount">> => 1024,
+            <<"createdAt">> => 1234567890,
+            <<"succeededAt">> => 1234567890,
+            <<"failedAt">> => undefined,
+            <<"updatedAt">> => 1234567890},
+    ?assertEqual(Map, snake_to_camel(camel_to_snake(Map))),
+    ok.
+
+epgsql_timestamp_to_xss_timestamp_test() ->
+    Timestamp1 = {{1970, 01, 01}, {0, 0, 0.0}},
+    ?assertEqual(0, epgsql_timestamp_to_xss_timestamp(Timestamp1)),
+    Timestamp2 = {{2022, 11, 20}, {15, 55, 34.42}},
+    ?assertEqual(1668959734420000, epgsql_timestamp_to_xss_timestamp(Timestamp2)),
+    ok.
+
+xss_timestamp_to_epgsql_timestamp_test() ->
+    Timestamp1 = 1668956433812,
+    Timestamp2 = epgsql_timestamp_to_xss_timestamp(xss_timestamp_to_epgsql_timestamp(Timestamp1)),
+    ?assertEqual(Timestamp1, Timestamp2),
+    ok.
+
+-endif. % -ifdef(TEST).
